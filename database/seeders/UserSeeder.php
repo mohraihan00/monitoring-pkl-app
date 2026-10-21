@@ -112,6 +112,8 @@ class UserSeeder extends Seeder
         );
 
         // ── Students ───────────────────────────────────────
+        // Demo/dummy data only. 'password' is optional; if omitted the
+        // STUDENT_INITIAL_PASSWORD env value (default: "password") is used.
         $studentData = [
             [
                 'username' => 'siswa.andi',
@@ -120,6 +122,7 @@ class UserSeeder extends Seeder
                 'class' => 'XII RPL 1',
                 'major' => 'Rekayasa Perangkat Lunak',
                 'phone' => '083456789012',
+                'password' => 'andi2024',
             ],
             [
                 'username' => 'siswa.dewi',
@@ -128,6 +131,7 @@ class UserSeeder extends Seeder
                 'class' => 'XII RPL 1',
                 'major' => 'Rekayasa Perangkat Lunak',
                 'phone' => '083456789013',
+                'password' => 'dewi2024',
             ],
             [
                 'username' => 'siswa.reza',
@@ -136,6 +140,7 @@ class UserSeeder extends Seeder
                 'class' => 'XII TKJ 1',
                 'major' => 'Teknik Komputer Jaringan',
                 'phone' => '083456789014',
+                'password' => 'reza2024',
             ],
             [
                 'username' => 'siswa.maya',
@@ -144,8 +149,11 @@ class UserSeeder extends Seeder
                 'class' => 'XII TKJ 1',
                 'major' => 'Teknik Komputer Jaringan',
                 'phone' => '083456789015',
+                'password' => 'maya2024',
             ],
         ];
+
+        $defaultStudentPassword = env('STUDENT_INITIAL_PASSWORD', 'password');
 
         foreach ($studentData as $data) {
             $user = User::firstOrCreate(
@@ -153,7 +161,7 @@ class UserSeeder extends Seeder
                 [
                     'name' => $data['name'],
                     'email' => null,
-                    'password' => Hash::make('password'),
+                    'password' => Hash::make($data['password'] ?? $defaultStudentPassword),
                     'role' => 'student',
                     'is_active' => true,
                 ]
@@ -172,10 +180,10 @@ class UserSeeder extends Seeder
         }
 
         $this->command->info('✓ Users seeded successfully.');
-        $this->command->info('  Credentials (all use password: "password"):');
+        $this->command->info('  Admin/teacher/supervisor password: "password"');
         $this->command->info('  admin       → admin');
         $this->command->info('  teacher     → guru.budi / guru.siti');
         $this->command->info('  supervisor  → pembimbing.agus / pembimbing.rina');
-        $this->command->info('  student     → siswa.andi / siswa.dewi / siswa.reza / siswa.maya');
+        $this->command->info('  student     → siswa.andi/andi2024, siswa.dewi/dewi2024, siswa.reza/reza2024, siswa.maya/maya2024');
     }
 }

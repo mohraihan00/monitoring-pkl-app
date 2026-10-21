@@ -34,7 +34,7 @@ class JournalTest extends TestCase
     {
         $data = $this->setupStudentWithPlacement();
 
-        $response = $this->withToken($data['token'])->postJson('/api/student/journals', [
+        $response = $this->withToken($data['token'])->postJson('/api/student/logbooks', [
             'journal_date' => now()->toDateString(),
             'activity' => 'Belajar Laravel Framework',
             'result' => 'Memahami routing dan controller',
@@ -59,7 +59,7 @@ class JournalTest extends TestCase
             'status' => 'draft',
         ]);
 
-        $response = $this->withToken($data['token'])->postJson("/api/student/journals/{$journal->id}/submit");
+        $response = $this->withToken($data['token'])->postJson("/api/student/logbooks/{$journal->id}/submit");
 
         $response->assertStatus(200)
             ->assertJsonPath('data.status', 'submitted');
@@ -76,7 +76,7 @@ class JournalTest extends TestCase
             'status' => 'approved',
         ]);
 
-        $response = $this->withToken($data['token'])->putJson("/api/student/journals/{$journal->id}", [
+        $response = $this->withToken($data['token'])->putJson("/api/student/logbooks/{$journal->id}", [
             'activity' => 'Updated Activity',
         ]);
 
@@ -95,7 +95,7 @@ class JournalTest extends TestCase
             'status' => 'rejected',
         ]);
 
-        $response = $this->withToken($data['token'])->putJson("/api/student/journals/{$journal->id}", [
+        $response = $this->withToken($data['token'])->putJson("/api/student/logbooks/{$journal->id}", [
             'activity' => 'Corrected Activity',
         ]);
 
@@ -115,7 +115,7 @@ class JournalTest extends TestCase
             'status' => 'rejected',
         ]);
 
-        $response = $this->withToken($data['token'])->postJson("/api/student/journals/{$journal->id}/submit");
+        $response = $this->withToken($data['token'])->postJson("/api/student/logbooks/{$journal->id}/submit");
 
         $response->assertStatus(200)
             ->assertJsonPath('data.status', 'submitted');
@@ -132,7 +132,7 @@ class JournalTest extends TestCase
             'status' => 'submitted',
         ]);
 
-        $response = $this->withToken($data['supervisorToken'])->postJson("/api/supervisor/journals/{$journal->id}/approve", [
+        $response = $this->withToken($data['supervisorToken'])->postJson("/api/supervisor/logbooks/{$journal->id}/approve", [
             'comment' => 'Bagus, teruskan!',
         ]);
 
@@ -152,7 +152,7 @@ class JournalTest extends TestCase
             'status' => 'submitted',
         ]);
 
-        $response = $this->withToken($data['supervisorToken'])->postJson("/api/supervisor/journals/{$journal->id}/reject", [
+        $response = $this->withToken($data['supervisorToken'])->postJson("/api/supervisor/logbooks/{$journal->id}/reject", [
             'comment' => 'Kurang detail, mohon diperbaiki.',
         ]);
 
@@ -176,7 +176,7 @@ class JournalTest extends TestCase
         $otherSupervisorUser->update(['username' => 'other.supervisor.' . uniqid()]);
         $otherToken = $otherSupervisorUser->createToken('test')->plainTextToken;
 
-        $response = $this->withToken($otherToken)->postJson("/api/supervisor/journals/{$journal->id}/approve");
+        $response = $this->withToken($otherToken)->postJson("/api/supervisor/logbooks/{$journal->id}/approve");
 
         $response->assertStatus(404);
     }

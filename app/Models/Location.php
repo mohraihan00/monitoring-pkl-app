@@ -18,6 +18,10 @@ class Location extends Model
         'longitude',
         'radius',
         'is_active',
+        'approval_status',
+        'approved_by',
+        'approved_at',
+        'approval_note',
     ];
 
     protected function casts(): array
@@ -27,6 +31,7 @@ class Location extends Model
             'longitude' => 'decimal:7',
             'radius' => 'integer',
             'is_active' => 'boolean',
+            'approved_at' => 'datetime',
         ];
     }
 

@@ -29,6 +29,7 @@ class Attendance extends Model
         'check_out_location_status',
         'check_out_photo_path',
         'status',
+        'late_minutes',
         'completeness_status',
         'verification_status',
         'verified_by',

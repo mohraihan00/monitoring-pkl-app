@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ResetPasswordRequest;
-use App\Http\Requests\Admin\StoreUserRequest;
 use App\Http\Requests\Admin\UpdateUserRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
@@ -48,12 +47,6 @@ class UserController extends Controller
         ]);
     }
 
-    public function store(StoreUserRequest $request): JsonResponse
-    {
-        $user = User::create($request->validated());
-        return $this->created(new UserResource($user));
-    }
-
     public function show(int $id): JsonResponse
     {
         $user = User::findOrFail($id);
@@ -64,6 +57,11 @@ class UserController extends Controller
     {
         $user = User::findOrFail($id);
         $user->update($request->validated());
+
+        if ($request->has('name') && $user->profile) {
+            $user->profile->update(['name' => $request->name]);
+        }
+
         return $this->success(new UserResource($user->fresh()), 'User berhasil diperbarui.');
     }
 

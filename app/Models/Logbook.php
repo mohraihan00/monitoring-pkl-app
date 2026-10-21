@@ -23,6 +23,7 @@ class Logbook extends Model
         'end_time',
         'activity',
         'description',
+        'plan',
         'result',
         'obstacles',
         'photo_path',
@@ -68,6 +69,11 @@ class Logbook extends Model
     public function comments(): HasMany
     {
         return $this->hasMany(LogbookComment::class);
+    }
+
+    public function statusHistories(): HasMany
+    {
+        return $this->hasMany(LogbookStatusHistory::class)->latest('created_at');
     }
 
     // ── Backward Compatibility Accessors & Mutators ──

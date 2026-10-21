@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Placement extends Model
 {
@@ -76,6 +77,16 @@ class Placement extends Model
     public function leaveRequests(): HasMany
     {
         return $this->hasMany(LeaveRequest::class);
+    }
+
+    public function projectSubmissions(): HasMany
+    {
+        return $this->hasMany(ProjectSubmission::class);
+    }
+
+    public function assessment(): HasOne
+    {
+        return $this->hasOne(Assessment::class);
     }
 
     /**

@@ -49,27 +49,14 @@ class Phase1AuthAndMasterDataTest extends TestCase
             ->assertJsonPath('data.user.username', $user->username);
     }
 
-    public function test_login_works_via_auth_login_route_alias(): void
-    {
-        $admin = $this->createAdmin();
+    // ── Admin Security & User Management ─────────
 
-        $response = $this->postJson('/api/auth/login', [
-            'username' => 'test.admin',
-            'password' => 'password',
-        ]);
-
-        $response->assertStatus(200)
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('data.user.role', 'admin');
-    }
-
-    // ── Admin Security & Password Reset ──────────
-
-    public function test_ordinary_user_creation_endpoint_rejects_admin_role(): void
+    public function test_raw_user_cannot_be_created_directly_via_admin_users_endpoint(): void
     {
         $admin = $this->createAdmin();
         $token = $admin->createToken('test')->plainTextToken;
 
+        // Raw POST to /api/admin/users is disabled; domain records must use /students, /teachers, /field-supervisors
         $response = $this->withToken($token)->postJson('/api/admin/users', [
             'name' => 'Attempted Rogue Admin',
             'username' => 'rogue.admin.' . uniqid(),
@@ -78,8 +65,42 @@ class Phase1AuthAndMasterDataTest extends TestCase
             'role' => 'admin',
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['role']);
+        $response->assertStatus(405);
+    }
+
+    public function test_admin_can_update_user_and_sync_profile_name(): void
+    {
+        $admin = $this->createAdmin();
+        $token = $admin->createToken('test')->plainTextToken;
+
+        [$studentUser, $student] = $this->createStudentUser();
+
+        $response = $this->withToken($token)->putJson("/api/admin/users/{$studentUser->id}", [
+            'name' => 'Nama Siswa Terupdate',
+            'email' => 'updated.student@test.com',
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.name', 'Nama Siswa Terupdate');
+
+        $this->assertEquals('Nama Siswa Terupdate', $student->fresh()->name);
+        $this->assertEquals('updated.student@test.com', $studentUser->fresh()->email);
+    }
+
+    public function test_admin_can_view_single_user(): void
+    {
+        $admin = $this->createAdmin();
+        $token = $admin->createToken('test')->plainTextToken;
+
+        [$studentUser] = $this->createStudentUser();
+
+        $response = $this->withToken($token)->getJson("/api/admin/users/{$studentUser->id}");
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.id', $studentUser->id)
+            ->assertJsonPath('data.username', $studentUser->username);
     }
 
     public function test_admin_can_reset_user_password_and_revoke_tokens(): void

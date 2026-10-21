@@ -16,30 +16,26 @@ use Illuminate\Support\Facades\Route;
 
 // ─────────────────────────────────────────────
 // Public routes (no auth required)
-// Supports both /api/login and /api/auth/login
 // ─────────────────────────────────────────────
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
-Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 
 // ─────────────────────────────────────────────
 // Authenticated routes
 // ─────────────────────────────────────────────
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Auth endpoints (both /api/* and /api/auth/* formats)
+    // Auth endpoints
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
-    Route::post('/auth/logout', [AuthController::class, 'logout']);
-    Route::get('/auth/me', [AuthController::class, 'me']);
 
     // ── Admin routes ──────────────────────────
     Route::prefix('admin')->middleware('role:admin')->group(function () {
 
         Route::get('/dashboard', [AdminDashboardController::class, 'index']);
 
-        // Users CRUD & Admin Password Reset
+        // Users Management & Admin Password Reset
         Route::post('/users/{id}/reset-password', [AdminUserController::class, 'resetPassword']);
-        Route::apiResource('users', AdminUserController::class);
+        Route::apiResource('users', AdminUserController::class)->except(['store']);
 
         // Students CRUD
         Route::apiResource('students', AdminStudentController::class);
@@ -78,15 +74,13 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/attendances/check-out', [StudentController::class, 'checkOut']);
         Route::get('/attendances/{id}', [StudentController::class, 'showAttendance']);
 
-        // Logbooks (with backward-compatible /journals aliases)
-        foreach (['logbooks', 'journals'] as $logbookPrefix) {
-            Route::get("/{$logbookPrefix}", [StudentController::class, 'journals']);
-            Route::post("/{$logbookPrefix}", [StudentController::class, 'storeJournal']);
-            Route::get("/{$logbookPrefix}/{id}", [StudentController::class, 'showJournal']);
-            Route::put("/{$logbookPrefix}/{id}", [StudentController::class, 'updateJournal']);
-            Route::delete("/{$logbookPrefix}/{id}", [StudentController::class, 'destroyJournal']);
-            Route::post("/{$logbookPrefix}/{id}/submit", [StudentController::class, 'submitJournal']);
-        }
+        // Logbooks
+        Route::get('/logbooks', [StudentController::class, 'journals']);
+        Route::post('/logbooks', [StudentController::class, 'storeJournal']);
+        Route::get('/logbooks/{id}', [StudentController::class, 'showJournal']);
+        Route::put('/logbooks/{id}', [StudentController::class, 'updateJournal']);
+        Route::delete('/logbooks/{id}', [StudentController::class, 'destroyJournal']);
+        Route::post('/logbooks/{id}/submit', [StudentController::class, 'submitJournal']);
     });
 
     // ── Teacher routes ────────────────────────
@@ -96,35 +90,28 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/students', [TeacherController::class, 'students']);
         Route::get('/students/{id}', [TeacherController::class, 'showStudent']);
         Route::get('/attendances', [TeacherController::class, 'attendances']);
-
-        // Logbooks (with backward-compatible /journals alias)
         Route::get('/logbooks', [TeacherController::class, 'journals']);
-        Route::get('/journals', [TeacherController::class, 'journals']);
     });
 
-    // ── Field Supervisor routes (supports both /supervisor and /field-supervisor) ───
-    foreach (['supervisor', 'field-supervisor'] as $spvPrefix) {
-        Route::prefix($spvPrefix)->middleware('role:field_supervisor')->group(function () {
+    // ── Field Supervisor routes ───────────────
+    Route::prefix('supervisor')->middleware('role:field_supervisor')->group(function () {
 
-            Route::get('/dashboard', [SupervisorController::class, 'dashboard']);
-            Route::get('/students', [SupervisorController::class, 'students']);
-            Route::get('/students/{id}', [SupervisorController::class, 'showStudent']);
+        Route::get('/dashboard', [SupervisorController::class, 'dashboard']);
+        Route::get('/students', [SupervisorController::class, 'students']);
+        Route::get('/students/{id}', [SupervisorController::class, 'showStudent']);
 
-            // Field Supervisor Location Management
-            Route::get('/locations', [SupervisorController::class, 'locations']);
-            Route::post('/locations', [SupervisorController::class, 'storeLocation']);
-            Route::get('/locations/{id}', [SupervisorController::class, 'showLocation']);
-            Route::put('/locations/{id}', [SupervisorController::class, 'updateLocation']);
+        // Field Supervisor Location Management
+        Route::get('/locations', [SupervisorController::class, 'locations']);
+        Route::post('/locations', [SupervisorController::class, 'storeLocation']);
+        Route::get('/locations/{id}', [SupervisorController::class, 'showLocation']);
+        Route::put('/locations/{id}', [SupervisorController::class, 'updateLocation']);
 
-            // Logbooks (with backward-compatible /journals alias)
-            foreach (['logbooks', 'journals'] as $logbookPrefix) {
-                Route::get("/{$logbookPrefix}", [SupervisorController::class, 'journals']);
-                Route::get("/{$logbookPrefix}/{id}", [SupervisorController::class, 'showJournal']);
-                Route::post("/{$logbookPrefix}/{id}/approve", [SupervisorController::class, 'approveJournal']);
-                Route::post("/{$logbookPrefix}/{id}/reject", [SupervisorController::class, 'rejectJournal']);
-            }
+        // Logbooks
+        Route::get('/logbooks', [SupervisorController::class, 'journals']);
+        Route::get('/logbooks/{id}', [SupervisorController::class, 'showJournal']);
+        Route::post('/logbooks/{id}/approve', [SupervisorController::class, 'approveJournal']);
+        Route::post('/logbooks/{id}/reject', [SupervisorController::class, 'rejectJournal']);
 
-            Route::get('/attendances', [SupervisorController::class, 'attendances']);
-        });
-    }
+        Route::get('/attendances', [SupervisorController::class, 'attendances']);
+    });
 });
