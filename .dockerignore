@@ -1,0 +1,9 @@
+.git
+frontend
+*.apk
+cloudflared.exe
+cloudflared.log
+monitoring-pkl-app/.env
+monitoring-pkl-app/node_modules
+monitoring-pkl-app/vendor
+monitoring-pkl-app/public/storage
