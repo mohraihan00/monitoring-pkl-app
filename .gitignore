@@ -1,24 +1,33 @@
-*.log
+# Laravel Backend
+monitoring-pkl-app/.env
+monitoring-pkl-app/vendor/
+monitoring-pkl-app/node_modules/
+monitoring-pkl-app/storage/*.key
+monitoring-pkl-app/public/storage
+monitoring-pkl-app/storage/framework/cache/*
+monitoring-pkl-app/storage/framework/sessions/*
+monitoring-pkl-app/storage/framework/views/*
+monitoring-pkl-app/storage/logs/*
+
+# Flutter Frontend
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/build/
+frontend/.packages
+frontend/android/.gradle
+frontend/android/local.properties
+frontend/ios/.generated/
+frontend/macos/.generated/
+
+# OS / IDE
 .DS_Store
-.env
-.env.backup
-.env.production
-.phpactor.json
-.phpunit.result.cache
-/.fleet
-/.idea
-/.nova
-/.phpunit.cache
-/.vscode
-/.zed
-/auth.json
-/node_modules
-/public/build
-/public/hot
-/public/storage
-/storage/*.key
-/storage/pail
-/vendor
-Homestead.json
-Homestead.yaml
 Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Tunnel & Built APK Binaries
+cloudflared.exe
+cloudflared.log
+*.apk
