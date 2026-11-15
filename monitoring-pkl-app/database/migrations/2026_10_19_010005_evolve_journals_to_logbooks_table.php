@@ -11,10 +11,13 @@ return new class extends Migration
         // Safely rename table without data loss
         Schema::rename('journals', 'logbooks');
 
+        // Rename columns before adding new columns so MySQL/MariaDB AFTER clauses resolve reliably.
         Schema::table('logbooks', function (Blueprint $table) {
             $table->renameColumn('journal_date', 'logbook_date');
             $table->renameColumn('verification_comment', 'verification_note');
+        });
 
+        Schema::table('logbooks', function (Blueprint $table) {
             $table->foreignId('attendance_id')->nullable()->after('placement_id')->constrained('attendances')->nullOnDelete();
             $table->foreignId('activity_id')->nullable()->after('logbook_date')->constrained('activities')->nullOnDelete();
             $table->text('description')->nullable()->after('activity');
@@ -33,7 +36,9 @@ return new class extends Migration
             $table->dropIndex(['activity_id']);
 
             $table->dropColumn(['attendance_id', 'activity_id', 'description']);
+        });
 
+        Schema::table('logbooks', function (Blueprint $table) {
             $table->renameColumn('logbook_date', 'journal_date');
             $table->renameColumn('verification_note', 'verification_comment');
         });

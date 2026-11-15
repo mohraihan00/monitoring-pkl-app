@@ -13,10 +13,17 @@ class PostgresIntegrationTest extends TestCase
     {
         parent::setUp();
 
-        // Target isolated PostgreSQL test database
+        // Target isolated PostgreSQL test database regardless of active .env driver
         Config::set('database.default', 'pgsql');
-        Config::set('database.connections.pgsql.database', env('DB_TEST_DATABASE', 'monitoring_pkl_test'));
+        Config::set('database.connections.pgsql.host', env('DB_PGSQL_TEST_HOST', '127.0.0.1'));
+        Config::set('database.connections.pgsql.port', env('DB_PGSQL_TEST_PORT', '5432'));
+        Config::set('database.connections.pgsql.database', env('DB_PGSQL_TEST_DATABASE', env('DB_TEST_DATABASE', 'monitoring_pkl_test')));
+        Config::set('database.connections.pgsql.username', env('DB_PGSQL_TEST_USERNAME', 'postgres'));
+        Config::set('database.connections.pgsql.password', env('DB_PGSQL_TEST_PASSWORD', 'postgres'));
+        Config::set('database.connections.pgsql.charset', 'utf8');
         Config::set('database.connections.pgsql.timezone', 'Asia/Jakarta');
+
+        DB::purge('pgsql');
 
         try {
             DB::connection('pgsql')->getPdo();
@@ -128,5 +135,39 @@ class PostgresIntegrationTest extends TestCase
         DB::connection('pgsql')->table('locations')->where('id', $locationId)->delete();
         DB::connection('pgsql')->table('field_supervisors')->where('id', $supervisorId)->delete();
         DB::connection('pgsql')->table('users')->where('id', $userId)->delete();
+    }
+
+    public function test_case_insensitive_search_macro_works_on_postgresql(): void
+    {
+        $suffix = uniqid();
+        $locationId = DB::connection('pgsql')->table('locations')->insertGetId([
+            'name' => "PG CaseSearch Bengkel {$suffix}",
+            'address' => "Jl. Raya CaseSearch {$suffix}",
+            'latitude' => -6.2000000,
+            'longitude' => 106.8000000,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        try {
+            $foundByName = \App\Models\Location::on('pgsql')
+                ->where(function ($q) use ($suffix) {
+                    $q->whereLikeInsensitive('name', "%pg casesearch bengkel {$suffix}%")
+                      ->orWhereLikeInsensitive('address', '%TIDAKADA%');
+                })
+                ->exists();
+
+            $foundByAddress = \App\Models\Location::on('pgsql')
+                ->where(function ($q) use ($suffix) {
+                    $q->whereLikeInsensitive('name', '%TIDAKADA%')
+                      ->orWhereLikeInsensitive('address', "%jl. raya casesearch {$suffix}%");
+                })
+                ->exists();
+
+            $this->assertTrue($foundByName);
+            $this->assertTrue($foundByAddress);
+        } finally {
+            DB::connection('pgsql')->table('locations')->where('id', $locationId)->delete();
+        }
     }
 }

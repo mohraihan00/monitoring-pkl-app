@@ -24,8 +24,8 @@ class TeacherController extends Controller
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'ilike', "%{$search}%")
-                  ->orWhere('teacher_code', 'ilike', "%{$search}%");
+                $q->whereLikeInsensitive('name', "%{$search}%")
+                  ->orWhereLikeInsensitive('teacher_code', "%{$search}%");
             });
         }
 

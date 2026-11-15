@@ -23,7 +23,7 @@ class PeriodController extends Controller
             $query->where('status', $request->status);
         }
         if ($request->has('search')) {
-            $query->where('name', 'ilike', "%{$request->search}%");
+            $query->whereLikeInsensitive('name', "%{$request->search}%");
         }
 
         $periods = $query->latest()->paginate($request->get('per_page', 15));

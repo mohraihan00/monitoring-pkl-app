@@ -145,9 +145,9 @@ class Phase1AuthAndMasterDataTest extends TestCase
         $response->assertStatus(403);
     }
 
-    // ── Safe Deactivation ────────────────────────
+    // ── Safe Cascade Deletion ──────────────────────
 
-    public function test_deleting_student_deactivates_account_preserving_records(): void
+    public function test_deleting_student_removes_account_and_placements_cleanly(): void
     {
         $admin = $this->createAdmin();
         $adminToken = $admin->createToken('admin')->plainTextToken;
@@ -163,15 +163,12 @@ class Phase1AuthAndMasterDataTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('success', true);
 
-        // User is deactivated
-        $this->assertFalse((bool) $studentUser->fresh()->is_active);
-
-        // Historical student and placement records remain in database
-        $this->assertDatabaseHas('students', ['id' => $student->id]);
-        $this->assertDatabaseHas('placements', ['id' => $placement->id]);
+        $this->assertDatabaseMissing('students', ['id' => $student->id]);
+        $this->assertDatabaseMissing('placements', ['id' => $placement->id]);
+        $this->assertDatabaseMissing('users', ['id' => $studentUser->id]);
     }
 
-    public function test_deleting_location_with_placements_deactivates_it_safely(): void
+    public function test_deleting_location_with_placements_removes_them_cleanly(): void
     {
         $admin = $this->createAdmin();
         $adminToken = $admin->createToken('admin')->plainTextToken;
@@ -184,9 +181,58 @@ class Phase1AuthAndMasterDataTest extends TestCase
 
         $response = $this->withToken($adminToken)->deleteJson("/api/admin/locations/{$location->id}");
 
-        $response->assertStatus(200);
-        $this->assertFalse((bool) $location->fresh()->is_active);
-        $this->assertDatabaseHas('locations', ['id' => $location->id]);
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('locations', ['id' => $location->id]);
+        $this->assertDatabaseMissing('placements', ['id' => $placement->id]);
+    }
+
+    public function test_admin_search_endpoints_are_case_insensitive(): void
+    {
+        $admin = $this->createAdmin();
+        $adminToken = $admin->createToken('admin')->plainTextToken;
+
+        [$studentUser, $student] = $this->createStudentUser();
+        $student->update(['name' => 'Zidan Nusantara']);
+
+        [$teacherUser, $teacher] = $this->createTeacherUser();
+        $teacher->update(['name' => 'Pak Surya Pembimbing']);
+
+        [$supervisorUser, $supervisor] = $this->createSupervisorUser();
+        $supervisor->update(['name' => 'Ibu Ratna DUDI', 'organization' => 'PT Maju Bersama']);
+
+        $location = $this->createLocation(['name' => 'Bengkel Garuda Jaya', 'address' => 'Jl. Merdeka Selatan']);
+        $period = Period::create([
+            'name' => 'Semester Gasal 2026/2027',
+            'start_date' => now()->subDays(5),
+            'end_date' => now()->addDays(60),
+            'status' => 'active',
+        ]);
+
+        $this->withToken($adminToken)->getJson('/api/admin/students?search=zidan')
+            ->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Zidan Nusantara']);
+
+        $this->withToken($adminToken)->getJson('/api/admin/teachers?search=SURYA')
+            ->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Pak Surya Pembimbing']);
+
+        $this->withToken($adminToken)->getJson('/api/admin/field-supervisors?search=maju%20bersama')
+            ->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Ibu Ratna DUDI']);
+
+        $this->withToken($adminToken)->getJson('/api/admin/locations?search=merdeka')
+            ->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Bengkel Garuda Jaya']);
+
+        $this->withToken($adminToken)->getJson('/api/admin/periods?search=gasal')
+            ->assertStatus(200)
+            ->assertJsonFragment(['name' => 'Semester Gasal 2026/2027']);
+
+        $this->withToken($adminToken)->getJson('/api/admin/users?search=' . strtoupper($studentUser->username))
+            ->assertStatus(200)
+            ->assertJsonFragment(['username' => $studentUser->username]);
     }
 
     // ── Placement Conflict Prevention ────────────
