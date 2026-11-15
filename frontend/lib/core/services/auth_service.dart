@@ -8,7 +8,7 @@ class AuthService {
   static const String _keyToken = 'auth_token';
   static const String _keyUser = 'auth_user';
   static const String _keyCustomBaseUrl = 'custom_base_url';
-  static const String defaultTunnelBaseUrl = 'https://bbs-reef-referring-mug.trycloudflare.com/api';
+  static const String defaultTunnelBaseUrl = 'http://pkl.zachriek.my.id/api';
   static const String _discoveryUrl = 'https://ntfy.sh/smart_pkl_smkn2_2800eab1/raw?poll=1&since=168h';
 
   static String? _cachedBaseUrl;
@@ -56,12 +56,19 @@ class AuthService {
   /// Daftar kandidat URL backend yang otomatis dicoba saat menghubungkan
   static List<String> get candidateUrls {
     final list = <String>[];
-    if (_cachedBaseUrl != null && _cachedBaseUrl!.trim().isNotEmpty) {
-      list.add(_cachedBaseUrl!.trim());
+    final cached = _cachedBaseUrl?.trim();
+    final discovered = _discoveredBaseUrl?.trim();
+
+    if (cached != null && cached.isNotEmpty) {
+      list.add(cached);
     }
-    if (_discoveredBaseUrl != null && _discoveredBaseUrl!.trim().isNotEmpty) {
-      final d = _discoveredBaseUrl!.trim();
-      if (!list.contains(d)) list.add(d);
+    if (discovered != null && discovered.isNotEmpty) {
+      if (list.isNotEmpty && cached != null && cached.contains('trycloudflare.com') && discovered != cached) {
+        // Prioritaskan URL discovery terbaru bila cache masih menyimpan tunnel temporer lama
+        list.insert(0, discovered);
+      } else if (!list.contains(discovered)) {
+        list.add(discovered);
+      }
     }
     if (!list.contains(defaultTunnelBaseUrl)) {
       list.add(defaultTunnelBaseUrl);
@@ -171,6 +178,7 @@ class AuthService {
     await refreshDiscoveredUrl();
     final targetsToTry = candidateUrls;
     http.Response? finalResponse;
+    http.Response? fallbackResponse;
     String? successfulTarget;
     Object? lastError;
 
@@ -197,6 +205,14 @@ class AuthService {
             )
             .timeout(const Duration(seconds: 6));
 
+        // Abaikan respons tunnel/proxy mati (5xx) atau endpoint tidak ditemukan (404)
+        // agar tetap mencoba kandidat URL discovery/default berikutnya.
+        if (response.statusCode >= 500 || response.statusCode == 404) {
+          fallbackResponse ??= response;
+          lastError = 'HTTP ${response.statusCode} dari $targetUrl';
+          continue;
+        }
+
         finalResponse = response;
         successfulTarget = targetUrl;
         break; // Server ditemukan dan merespons!
@@ -204,6 +220,8 @@ class AuthService {
         lastError = e;
       }
     }
+
+    finalResponse ??= fallbackResponse;
 
     if (finalResponse == null) {
       return {
