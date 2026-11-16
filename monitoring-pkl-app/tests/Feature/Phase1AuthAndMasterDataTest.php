@@ -10,6 +10,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Tests\CreatesTestData;
 use Tests\TestCase;
 
@@ -346,5 +347,17 @@ class Phase1AuthAndMasterDataTest extends TestCase
         $response->assertStatus(401)
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Unauthenticated. Silakan login terlebih dahulu.');
+    }
+
+    public function test_public_storage_fallback_route_serves_uploaded_files(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('attendances/check-in/2026-11-16/sample.txt', 'ok');
+
+        $this->get('/storage/attendances/check-in/2026-11-16/sample.txt')
+            ->assertStatus(200);
+
+        $this->get('/storage/attendances/check-in/2026-11-16/missing.txt')
+            ->assertStatus(404);
     }
 }
