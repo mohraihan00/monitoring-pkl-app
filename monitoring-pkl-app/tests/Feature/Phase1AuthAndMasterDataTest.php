@@ -336,4 +336,15 @@ class Phase1AuthAndMasterDataTest extends TestCase
         $updateResponse->assertStatus(200)
             ->assertJsonPath('data.name', 'Bengkel Mobil Maju Sejahtera');
     }
+
+    public function test_unauthenticated_non_json_api_request_returns_401_instead_of_route_login_error(): void
+    {
+        $response = $this->withHeaders([
+            'Accept' => 'text/html',
+        ])->get('/api/me');
+
+        $response->assertStatus(401)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Unauthenticated. Silakan login terlebih dahulu.');
+    }
 }

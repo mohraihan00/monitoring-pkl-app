@@ -13,6 +13,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Jangan redirect ke route('login') karena aplikasi ini hanya menyediakan REST API
+        $middleware->redirectGuestsTo(fn () => null);
+
         // Register role middleware alias
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
