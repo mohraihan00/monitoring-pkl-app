@@ -113,6 +113,7 @@ class AttendanceTest extends TestCase
     public function test_student_can_check_out_after_check_in(): void
     {
         [$token, $placement] = $this->setupStudent();
+        $this->travelTo(now()->setTime(16, 30));
 
         // Create check-in record first
         Attendance::create([

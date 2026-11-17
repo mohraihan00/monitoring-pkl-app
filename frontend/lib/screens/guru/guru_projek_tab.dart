@@ -1,9 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/services/teacher_service.dart';
 import '../../widgets/smart_pkl_header.dart';
-import '../../widgets/status_pill.dart';
-import '../../widgets/custom_button.dart';
+import 'guru_projek_detail_screen.dart';
 
+/// ==============================================================================
+/// TAB PROJEK SISWA GURU PEMBIMBING (SMART PKL)
+///
+/// Halaman khusus bagi guru pembimbing untuk memantau pengajuan projek siswa
+/// yang telah diverifikasi oleh DU/DI, membaca berkas laporan/hasil karya,
+/// serta memberikan catatan dan arahan bimbingan kepada siswa.
+/// ==============================================================================
 class GuruProjekTab extends StatefulWidget {
   final Function(int)? onNavigateTab;
 
@@ -17,29 +24,42 @@ class GuruProjekTab extends StatefulWidget {
 }
 
 class _GuruProjekTabState extends State<GuruProjekTab> {
-  bool _isGraded = false;
-  final TextEditingController _nilaiController = TextEditingController(text: '88');
-  final TextEditingController _catatanController = TextEditingController(
-    text: 'Implementasi rancangan sangat rapi dan memenuhi standar industri. Siap maju sidang presentasi PKL.',
-  );
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _projects = [];
 
   @override
-  void dispose() {
-    _nilaiController.dispose();
-    _catatanController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _loadProjects();
   }
 
-  void _handleSimpanNilai() {
-    setState(() {
-      _isGraded = true;
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Penilaian dan persetujuan sidang projek Ananda Putri berhasil disimpan!'),
-        backgroundColor: Color(0xFF16A34A),
-      ),
-    );
+  Future<void> _loadProjects() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    try {
+      final results = await TeacherService.getProjects();
+      if (mounted) {
+        setState(() {
+          _projects = results;
+          _isLoading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  bool _hasTeacherReview(Map<String, dynamic> proj) {
+    final reviews = proj['reviews'] as List<dynamic>? ?? [];
+    return reviews.any((r) => r['reviewer_role'] == 'teacher');
+  }
+
+  bool _isVerifiedByDudi(Map<String, dynamic> proj) {
+    final status = (proj['status'] ?? '').toString().toLowerCase();
+    if (status == 'approved') return true;
+    final reviews = proj['reviews'] as List<dynamic>? ?? [];
+    return reviews.any((r) => r['reviewer_role'] == 'dudi' && r['decision'] == 'approved');
   }
 
   @override
@@ -50,268 +70,361 @@ class _GuruProjekTabState extends State<GuruProjekTab> {
         child: Column(
           children: [
             SmartPklHeader(
-              title: 'Sidang Projek',
-              subtitle: 'Guru',
+              title: 'Projek',
               onProfileTap: () => widget.onNavigateTab?.call(4),
             ),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Overview Banner
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: AppColors.cardBorder, width: 1),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: AppColors.primarySoft,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(Icons.assignment_turned_in_rounded, color: AppColors.primary, size: 24),
+              child: RefreshIndicator(
+                onRefresh: _loadProjects,
+                color: AppColors.primary,
+                child: SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Loading State
+                      if (_isLoading)
+                        const Center(
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(vertical: 40),
+                            child: CircularProgressIndicator(color: AppColors.primary),
                           ),
-                          const SizedBox(width: 12),
-                          const Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Verifikasi Laporan Akhir PKL',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                                ),
-                                SizedBox(height: 2),
-                                Text(
-                                  '5 Siswa telah mengajukan draft laporan & siap sidang.',
-                                  style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 16),
+                        )
+                      else if (_projects.isEmpty)
+                        _buildEmptyState()
+                      else
+                        ..._projects.map((project) => _buildProjectCard(project)),
 
-                    // Detail Submission Projek: Ananda Putri (Matching what Ananda submitted)
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: _isGraded ? const Color(0xFF86EFAC) : const Color(0xFFBFDBFE),
-                          width: 1.5,
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.03),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: const [
-                                    Text(
-                                      'Ananda Putri',
-                                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      'XII RPL 1 • PT Telkom Digital Solutions',
-                                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              StatusPill(
-                                text: _isGraded ? 'ACC Sidang (88/A)' : 'Menunggu Review',
-                                style: _isGraded ? PillStyle.success : PillStyle.warning,
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          const Divider(color: Color(0xFFF1F5F9), height: 1),
-                          const SizedBox(height: 14),
-
-                          // Section 1
-                          const Text(
-                            '1. Nama & Deskripsi Pekerjaan',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Pengembangan Modul E-Commerce & Dashboard Monitoring PKL Berbasis Flutter Cross-Platform untuk integrasi data industri.',
-                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-
-                          // Section 2
-                          const Text(
-                            '2. Perencanaan Kegiatan (Planning)',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: const Text(
-                              'Sprint 1: Desain Figma, Sprint 2: Slicing UI Siswa & Guru, Sprint 3: Pengujian Validasi Presensi GPS & Upload Dokumen.',
-                              style: TextStyle(fontSize: 12, color: AppColors.textSecondary, height: 1.3),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-
-                          // File Lampiran PDF Laporan
-                          const Text(
-                            '5. Berkas Laporan Pendukung',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0xFFBFDBFE), width: 1),
-                            ),
-                            child: const Row(
-                              children: [
-                                Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFEF4444), size: 20),
-                                SizedBox(width: 8),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Laporan_Akhir_PKL_AnandaPutri_XIIRPL1.pdf',
-                                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      Text('4.8 MB • Dokumen Lengkap', style: TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-                                    ],
-                                  ),
-                                ),
-                                Icon(Icons.open_in_new_rounded, size: 16, color: AppColors.primary),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Penilaian Form Guru
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF8FAFC),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Form Evaluasi & Nilai Guru Pembimbing',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-                                ),
-                                const SizedBox(height: 10),
-                                Row(
-                                  children: [
-                                    const Text('Nilai Angka (0-100): ', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                                    const SizedBox(width: 8),
-                                    SizedBox(
-                                      width: 70,
-                                      height: 36,
-                                      child: TextField(
-                                        controller: _nilaiController,
-                                        keyboardType: TextInputType.number,
-                                        textAlign: TextAlign.center,
-                                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                                        decoration: InputDecoration(
-                                          contentPadding: EdgeInsets.zero,
-                                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                      decoration: BoxDecoration(
-                                        color: const Color(0xFFDCFCE7),
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      child: const Text('Grade A', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF16A34A))),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 10),
-                                const Text('Catatan Rekomendasi Sidang:', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-                                const SizedBox(height: 4),
-                                TextField(
-                                  controller: _catatanController,
-                                  maxLines: 2,
-                                  style: const TextStyle(fontSize: 12),
-                                  decoration: InputDecoration(
-                                    contentPadding: const EdgeInsets.all(8),
-                                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(6)),
-                                    fillColor: Colors.white,
-                                    filled: true,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-
-                          CustomButton(
-                            text: _isGraded ? 'Perbarui Nilai Sidang' : 'Simpan Nilai & Setujui Sidang PKL',
-                            icon: Icons.check_circle_outline_rounded,
-                            color: const Color(0xFF16A34A),
-                            onPressed: _handleSimpanNilai,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                  ],
+                      const SizedBox(height: 24),
+                    ],
+                  ),
                 ),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildProjectCard(Map<String, dynamic> project) {
+    final student = project['student'] as Map<String, dynamic>? ?? {};
+    final studentName = student['name']?.toString() ?? 'Siswa PKL';
+    final studentClass = student['class']?.toString() ?? 'XII RPL';
+    final major = student['major']?.toString() ?? 'Rekayasa Perangkat Lunak';
+    final dudiLocation = student['location']?.toString() ?? 'DUDI Mitra';
+
+    final initials = studentName.isNotEmpty
+        ? studentName.trim().split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join('').toUpperCase()
+        : 'SW';
+
+    final title = project['title']?.toString() ?? 'Projek Siswa';
+    final plan = project['plan']?.toString() ?? '';
+    final result = project['result']?.toString() ?? '';
+    final docName = project['document_name']?.toString();
+    final docSize = project['document_size'] as int? ?? 0;
+    final status = (project['status'] ?? 'pending').toString().toLowerCase();
+
+    final isVerifiedDudi = _isVerifiedByDudi(project);
+    final hasTeacherNote = _hasTeacherReview(project);
+
+    final reviews = project['reviews'] as List<dynamic>? ?? [];
+    final teacherReview = reviews.firstWhere(
+      (r) => r['reviewer_role'] == 'teacher',
+      orElse: () => null,
+    );
+
+    Color statusBadgeBg;
+    Color statusBadgeColor;
+    String statusBadgeText;
+    IconData statusBadgeIcon;
+
+    if (status == 'approved' || isVerifiedDudi) {
+      statusBadgeBg = const Color(0xFFDCFCE7);
+      statusBadgeColor = const Color(0xFF16A34A);
+      statusBadgeText = 'Disetujui';
+      statusBadgeIcon = Icons.check_circle_rounded;
+    } else if (status == 'revision') {
+      statusBadgeBg = const Color(0xFFFEE2E2);
+      statusBadgeColor = const Color(0xFFDC2626);
+      statusBadgeText = 'Perlu Revisi';
+      statusBadgeIcon = Icons.warning_amber_rounded;
+    } else {
+      statusBadgeBg = const Color(0xFFFEF3C7);
+      statusBadgeColor = const Color(0xFFD97706);
+      statusBadgeText = 'Menunggu';
+      statusBadgeIcon = Icons.hourglass_top_rounded;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: Avatar, Nama Siswa & Status DU/DI
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: const Color(0xFFEFF6FF),
+                child: Text(
+                  initials,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF2563EB),
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      studentName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0F172A),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$studentClass • $major',
+                      style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: statusBadgeBg,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: statusBadgeColor.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(statusBadgeIcon, size: 12, color: statusBadgeColor),
+                    const SizedBox(width: 4),
+                    Text(
+                      statusBadgeText,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700,
+                        color: statusBadgeColor,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Color(0xFFF1F5F9)),
+          const SizedBox(height: 12),
+
+          // Judul Projek & Lokasi
+          Row(
+            children: [
+              const Icon(Icons.business_rounded, size: 14, color: Color(0xFF64748B)),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  dudiLocation,
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF64748B), fontWeight: FontWeight.w600),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0F172A),
+            ),
+          ),
+
+          if (plan.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Perencanaan: $plan',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+
+          if (result.isNotEmpty) ...[
+            const SizedBox(height: 3),
+            Text(
+              'Hasil Kerja: $result',
+              style: const TextStyle(fontSize: 12, color: Color(0xFF475569)),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+
+          // Dokumen PDF Terlampir
+          if (docName != null && docName.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFC),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.picture_as_pdf_rounded, color: Color(0xFFDC2626), size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      docName,
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Text(
+                    docSize > 0 ? '${(docSize / (1024 * 1024)).toStringAsFixed(1)} MB' : 'PDF',
+                    style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+
+          // Catatan Guru jika sudah ada
+          if (teacherReview != null && teacherReview['note'] != null && teacherReview['note'].toString().trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFBFDBFE)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.school_rounded, size: 13, color: Color(0xFF2563EB)),
+                      const SizedBox(width: 5),
+                      const Text(
+                        'Catatan Bimbingan Anda (Guru):',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF2563EB)),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    teacherReview['note'].toString(),
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF1E40AF)),
+                  ),
+                ],
+              ),
+            ),
+          ],
+
+          const SizedBox(height: 14),
+
+          // Tombol Buka & Beri Catatan
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GuruProjekDetailScreen(
+                      projectId: project['id'] as int?,
+                      studentData: student,
+                    ),
+                  ),
+                ).then((_) => _loadProjects());
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                foregroundColor: Colors.white,
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: Icon(
+                hasTeacherNote ? Icons.assignment_turned_in_rounded : Icons.edit_note_rounded,
+                size: 16,
+              ),
+              label: Text(
+                hasTeacherNote ? 'Buka & Perbarui Catatan Bimbingan' : 'Buka & Beri Catatan Bimbingan',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.folder_open_rounded, size: 48, color: Color(0xFF94A3B8)),
+          SizedBox(height: 12),
+          Text(
+            'Tidak Ada Projek Siswa',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            'Belum ada pengajuan projek siswa pada kategori filter yang dipilih.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+          ),
+        ],
       ),
     );
   }

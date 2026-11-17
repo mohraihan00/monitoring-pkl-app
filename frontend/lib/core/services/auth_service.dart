@@ -8,7 +8,14 @@ class AuthService {
   static const String _keyToken = 'auth_token';
   static const String _keyUser = 'auth_user';
   static const String _keyCustomBaseUrl = 'custom_base_url';
-  static const String defaultTunnelBaseUrl = 'http://pkl.zachriek.my.id/api';
+
+  /// URL Backend Produksi Jagoanhosting 24 Jam Online (Tanpa perlu laptop menyala)
+  static const String railwayProductionUrl = 'http://pkl.zachriek.my.id/api';
+
+  /// URL HTTPS cadangan server produksi Jagoanhosting
+  static const String httpsProductionUrl = 'https://pkl.zachriek.my.id/api';
+
+  /// Channel auto-discovery untuk pembaruan endpoint publik tanpa build ulang APK
   static const String _discoveryUrl = 'https://ntfy.sh/smart_pkl_smkn2_2800eab1/raw?poll=1&since=168h';
 
   static String? _cachedBaseUrl;
@@ -56,6 +63,26 @@ class AuthService {
   /// Daftar kandidat URL backend yang otomatis dicoba saat menghubungkan
   static List<String> get candidateUrls {
     final list = <String>[];
+
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && !origin.startsWith('null')) {
+          list.add('$origin/api');
+        }
+      } catch (_) {}
+      const webOptions = [
+        railwayProductionUrl,
+        httpsProductionUrl,
+        'http://localhost:8000/api',
+        'http://127.0.0.1:8000/api',
+      ];
+      for (final opt in webOptions) {
+        if (!list.contains(opt)) list.add(opt);
+      }
+      return list;
+    }
+
     final cached = _cachedBaseUrl?.trim();
     final discovered = _discoveredBaseUrl?.trim();
 
@@ -63,27 +90,24 @@ class AuthService {
       list.add(cached);
     }
     if (discovered != null && discovered.isNotEmpty) {
-      if (list.isNotEmpty && cached != null && cached.contains('trycloudflare.com') && discovered != cached) {
-        // Prioritaskan URL discovery terbaru bila cache masih menyimpan tunnel temporer lama
+      if (list.isNotEmpty &&
+          cached != null &&
+          (cached.contains('trycloudflare.com') || cached.contains('up.railway.app')) &&
+          discovered != cached) {
         list.insert(0, discovered);
       } else if (!list.contains(discovered)) {
         list.add(discovered);
       }
     }
-    if (!list.contains(defaultTunnelBaseUrl)) {
-      list.add(defaultTunnelBaseUrl);
+    if (!list.contains(railwayProductionUrl)) {
+      list.add(railwayProductionUrl);
+    }
+    if (!list.contains(httpsProductionUrl)) {
+      list.add(httpsProductionUrl);
     }
 
-    if (kIsWeb) {
-      const webOptions = ['http://localhost:8000/api', 'http://127.0.0.1:8000/api'];
-      for (final opt in webOptions) {
-        if (!list.contains(opt)) list.add(opt);
-      }
-    } else if (Platform.isAndroid) {
-      // Fallback lokal Android (Wi-Fi / USB adb reverse / Emulator):
+    if (Platform.isAndroid) {
       const androidOptions = [
-        'http://192.168.1.4:8000/api',
-        'http://192.168.137.1:8000/api',
         'http://127.0.0.1:8000/api',
         'http://10.0.2.2:8000/api',
       ];
@@ -105,16 +129,26 @@ class AuthService {
   /// Default baseUrl berdasarkan platform
   static String get defaultBaseUrl {
     if (kIsWeb) {
-      return 'http://localhost:8000/api';
-    } else if (Platform.isAndroid) {
-      return _discoveredBaseUrl ?? defaultTunnelBaseUrl;
-    } else {
-      return 'http://127.0.0.1:8000/api';
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && !origin.startsWith('null')) {
+          return '$origin/api';
+        }
+      } catch (_) {}
     }
+    return _discoveredBaseUrl ?? railwayProductionUrl;
   }
 
   /// Resolves the active base URL dynamically.
   static String get baseUrl {
+    if (kIsWeb) {
+      try {
+        final origin = Uri.base.origin;
+        if (origin.isNotEmpty && !origin.startsWith('null')) {
+          return '$origin/api';
+        }
+      } catch (_) {}
+    }
     if (_cachedBaseUrl != null && _cachedBaseUrl!.trim().isNotEmpty) {
       return _cachedBaseUrl!.trim();
     }
@@ -145,6 +179,37 @@ class AuthService {
     await prefs.remove(_keyCustomBaseUrl);
   }
 
+  /// Menguji apakah URL server dapat dihubungi secara real-time
+  static Future<bool> testConnection([String? customUrl]) async {
+    final target = (customUrl != null && customUrl.trim().isNotEmpty) ? customUrl.trim() : baseUrl;
+    String clean = target;
+    if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
+      clean = 'https://$clean';
+    }
+    while (clean.endsWith('/')) {
+      clean = clean.substring(0, clean.length - 1);
+    }
+    if (!clean.endsWith('/api')) {
+      clean = '$clean/api';
+    }
+
+    try {
+      final response = await http
+          .get(Uri.parse('$clean/ping'))
+          .timeout(const Duration(seconds: 4));
+      return response.statusCode == 200;
+    } catch (_) {
+      try {
+        final response = await http
+            .get(Uri.parse('$clean/login'))
+            .timeout(const Duration(seconds: 4));
+        return response.statusCode < 500;
+      } catch (_) {
+        return false;
+      }
+    }
+  }
+
   /// Memformat URL gambar dari server Laravel agar selalu sesuai dengan host backend aktif
   static String formatImageUrl(String? pathOrUrl) {
     if (pathOrUrl == null || pathOrUrl.trim().isEmpty) return '';
@@ -153,8 +218,21 @@ class AuthService {
 
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
       final uri = Uri.tryParse(trimmed);
-      if (uri != null && (uri.host == 'localhost' || uri.host == '127.0.0.1')) {
-        return '$serverHost${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
+      if (uri != null) {
+        final serverUri = Uri.parse(serverHost);
+        if (uri.path.startsWith('/storage/') ||
+            uri.host == 'localhost' ||
+            uri.host == '127.0.0.1' ||
+            uri.host == serverUri.host ||
+            uri.host.endsWith('.trycloudflare.com')) {
+          return Uri(
+            scheme: serverUri.scheme,
+            host: serverUri.host,
+            port: serverUri.hasPort ? serverUri.port : null,
+            path: uri.path,
+            query: uri.hasQuery ? uri.query : null,
+          ).toString();
+        }
       }
       return trimmed;
     }
@@ -205,8 +283,8 @@ class AuthService {
             )
             .timeout(const Duration(seconds: 6));
 
-        // Abaikan respons tunnel/proxy mati (5xx) atau endpoint tidak ditemukan (404)
-        // agar tetap mencoba kandidat URL discovery/default berikutnya.
+        // Abaikan respons proxy/tunnel mati (5xx) atau endpoint tidak ditemukan (404)
+        // agar tetap mencoba kandidat URL discovery/produksi berikutnya.
         if (response.statusCode >= 500 || response.statusCode == 404) {
           fallbackResponse ??= response;
           lastError = 'HTTP ${response.statusCode} dari $targetUrl';
@@ -362,8 +440,8 @@ class AuthService {
     }
 
     try {
-      final url = Uri.parse('$baseUrl/change-password');
-      final response = await http.post(
+      Uri url = Uri.parse('$baseUrl/change-password');
+      http.Response response = await http.post(
         url,
         headers: {
           'Content-Type': 'application/json',
@@ -376,6 +454,24 @@ class AuthService {
           'password_confirmation': confirmPassword,
         }),
       ).timeout(const Duration(seconds: 10));
+
+      // Fallback ke endpoint alternatif jika 404
+      if (response.statusCode == 404) {
+        url = Uri.parse('$baseUrl/auth/change-password');
+        response = await http.post(
+          url,
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'current_password': currentPassword,
+            'password': newPassword,
+            'password_confirmation': confirmPassword,
+          }),
+        ).timeout(const Duration(seconds: 10));
+      }
 
       final data = jsonDecode(response.body);
 

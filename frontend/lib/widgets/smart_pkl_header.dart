@@ -54,7 +54,7 @@ class SmartPklHeader extends StatelessWidget {
                     child: Image.asset(
                       'assets/images/logo_smart_pkl.png',
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(
+                      errorBuilder: (_, _, _) => const Icon(
                         Icons.settings_rounded,
                         color: Color(0xFF2563EB),
                         size: 30,

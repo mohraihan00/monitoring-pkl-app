@@ -17,7 +17,7 @@ class PlacementController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $query = Placement::with(['student', 'location', 'period', 'teacher', 'fieldSupervisor']);
+        $query = Placement::with(['student', 'location', 'period', 'teacher', 'fieldSupervisor', 'assessment']);
 
         if ($request->has('student_id')) {
             $query->where('student_id', $request->student_id);
@@ -83,6 +83,15 @@ class PlacementController extends Controller
         $placement = Placement::findOrFail($id);
         $placement->update(['status' => 'inactive']);
         return $this->success(null, 'Penempatan berhasil dinonaktifkan.');
+    }
+
+    /**
+     * Delete assessment / reset score for a placement.
+     */
+    public function deleteAssessment(int $id): JsonResponse
+    {
+        \App\Models\Assessment::where('placement_id', $id)->delete();
+        return $this->success(null, 'Penilaian PKL berhasil dihapus.');
     }
 
     /**
