@@ -286,7 +286,7 @@ class _DudiLogbookDetailScreenState extends State<DudiLogbookDetailScreen> {
     if (res['success'] == true) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res['message'] ?? 'Logbook ditolak dan dikembalikan untuk revisi siswa.'),
+          content: Text(res['message'] ?? 'Logbook dikembalikan untuk revisi siswa.'),
           backgroundColor: const Color(0xFFDC2626),
         ),
       );
@@ -295,7 +295,7 @@ class _DudiLogbookDetailScreenState extends State<DudiLogbookDetailScreen> {
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(res['message'] ?? 'Gagal menolak logbook.'),
+          content: Text(res['message'] ?? 'Gagal meminta revisi logbook.'),
           backgroundColor: const Color(0xFFEF4444),
         ),
       );
@@ -426,38 +426,9 @@ class _DudiLogbookDetailScreenState extends State<DudiLogbookDetailScreen> {
                               if (isApproved)
                                 const StatusPill(text: 'Disetujui', style: PillStyle.success)
                               else if (isRejected)
-                                const StatusPill(text: 'Ditolak / Revisi', style: PillStyle.error)
+                                const StatusPill(text: 'Direvisi', style: PillStyle.error)
                               else
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFFEF2F2),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(color: const Color(0xFFFECACA)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: const BoxDecoration(
-                                          color: Color(0xFFEF4444),
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Text(
-                                        'Menunggu',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: FontWeight.w700,
-                                          color: Color(0xFFB91C1C),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                                const StatusPill(text: 'Menunggu', style: PillStyle.warning),
                             ],
                           ),
                           const SizedBox(height: 14),
@@ -767,7 +738,7 @@ class _DudiLogbookDetailScreenState extends State<DudiLogbookDetailScreen> {
                                     ),
                                     child: Center(
                                       child: Text(
-                                        isApproved ? '✓ Logbook telah disetujui (ACC)' : '✕ Logbook telah ditolak',
+                                        isApproved ? 'Logbook telah disetujui' : 'Logbook direvisi',
                                         style: TextStyle(
                                           fontSize: 12,
                                           fontWeight: FontWeight.w700,

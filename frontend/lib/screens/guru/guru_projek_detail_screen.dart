@@ -156,10 +156,10 @@ class _GuruProjekDetailScreenState extends State<GuruProjekDetailScreen> {
       case 'approved':
         return const StatusPill(text: 'Disetujui', style: PillStyle.success);
       case 'revision':
-        return const StatusPill(text: 'Perlu Revisi', style: PillStyle.error);
+        return const StatusPill(text: 'Direvisi', style: PillStyle.error);
       case 'pending':
       case 'submitted':
-        return const StatusPill(text: 'Menunggu Verifikasi', style: PillStyle.warning);
+        return const StatusPill(text: 'Menunggu', style: PillStyle.warning);
       default:
         return const StatusPill(text: 'Draf', style: PillStyle.neutral);
     }
@@ -215,30 +215,6 @@ class _GuruProjekDetailScreenState extends State<GuruProjekDetailScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Banner Info Bimbingan
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFEFF6FF),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFFBFDBFE)),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(Icons.school_rounded, color: Color(0xFF2563EB), size: 18),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Guru pembimbing dapat memberikan catatan arahan bimbingan yang akan langsung terkirim ke siswa.',
-                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1E40AF)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
                     // Siswa Profile Card
                     Container(
                       decoration: BoxDecoration(
@@ -402,7 +378,7 @@ class _GuruProjekDetailScreenState extends State<GuruProjekDetailScreen> {
                                   onTap: () {
                                     final pId = _project?['id'] is int
                                         ? _project!['id'] as int
-                                        : int.tryParse(_project?['id']?.toString() ?? '');
+                                        : int.tryParse((_project?['id'] ?? widget.projectId ?? '').toString());
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(
@@ -471,7 +447,7 @@ class _GuruProjekDetailScreenState extends State<GuruProjekDetailScreen> {
                                   onPressed: () {
                                     final pId = _project?['id'] is int
                                         ? _project!['id'] as int
-                                        : int.tryParse(_project?['id']?.toString() ?? '');
+                                        : int.tryParse((_project?['id'] ?? widget.projectId ?? '').toString());
                                     Navigator.push(
                                       context,
                                       MaterialPageRoute(

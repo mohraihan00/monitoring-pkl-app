@@ -53,9 +53,33 @@ class PlacementController extends Controller
 
     public function store(StorePlacementRequest $request): JsonResponse
     {
-        $placement = Placement::create($request->validated());
+        $data = $request->validated();
+        $studentIds = $request->input('student_ids');
+        if (empty($studentIds) && $request->filled('student_id')) {
+            $studentIds = [$request->input('student_id')];
+        }
+        $studentIds = is_array($studentIds) ? $studentIds : [$studentIds];
+
+        $createdPlacements = [];
+        foreach ($studentIds as $sId) {
+            if (!$sId) continue;
+            $itemData = $data;
+            unset($itemData['student_ids']);
+            $itemData['student_id'] = $sId;
+            $placement = Placement::create($itemData);
+            $createdPlacements[] = $placement->load(['student.user', 'location', 'period', 'teacher.user', 'fieldSupervisor.user']);
+        }
+
+        if (count($createdPlacements) === 1) {
+            return $this->created(
+                new PlacementResource($createdPlacements[0]),
+                'Penempatan siswa berhasil disimpan.'
+            );
+        }
+
         return $this->created(
-            new PlacementResource($placement->load(['student', 'location', 'period', 'teacher', 'fieldSupervisor']))
+            PlacementResource::collection(collect($createdPlacements)),
+            count($createdPlacements) . ' penempatan siswa berhasil disimpan.'
         );
     }
 
@@ -76,13 +100,22 @@ class PlacementController extends Controller
     }
 
     /**
-     * Deactivate placement preserving historical records.
+     * Delete placement and associated records.
      */
     public function destroy(int $id): JsonResponse
     {
         $placement = Placement::findOrFail($id);
-        $placement->update(['status' => 'inactive']);
-        return $this->success(null, 'Penempatan berhasil dinonaktifkan.');
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($placement) {
+            $placement->attendances()->delete();
+            $placement->logbooks()->delete();
+            $placement->leaveRequests()->delete();
+            $placement->projectSubmissions()->delete();
+            \App\Models\Assessment::where('placement_id', $placement->id)->delete();
+            $placement->delete();
+        });
+
+        return $this->success(null, 'Data penempatan berhasil dihapus.');
     }
 
     /**

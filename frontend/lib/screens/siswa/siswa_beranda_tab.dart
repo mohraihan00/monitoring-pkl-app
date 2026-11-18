@@ -5,16 +5,9 @@ import '../../core/services/student_service.dart';
 import '../../widgets/smart_pkl_header.dart';
 
 /// ==============================================================================
-/// HALAMAN BERANDA SISWA (Beranda Monitoring)
-/// Sesuai UI Mockup Desain Mobile SMART PKL
-/// 
-/// Interaksi Backend ('monitoring-pkl-app'):
-/// 1. GET /api/student/profile
-///    -> Mengambil nama siswa, kelas ("XII RPL 1"), dan sekolah ("SMKN 2 Bandar Lampung")
-/// 2. GET /api/student/dashboard
-///    -> Mengambil ringkasan statistik logbook ACC ("18/20") dan penempatan magang aktif
-/// 3. GET /api/student/attendances
-///    -> Menghitung persentase presensi kehadiran siswa ("96%")
+/// HALAMAN BERANDA SISWA (Dashboard Monitoring)
+/// Disesuaikan persis dengan Mockup Desain Mobile SMART PKL
+/// 100% menggunakan data riil dari backend / database, tanpa data dummy.
 /// ==============================================================================
 class SiswaBerandaTab extends StatefulWidget {
   final Function(int, [int?])? onNavigateTab;
@@ -31,17 +24,47 @@ class SiswaBerandaTab extends StatefulWidget {
 class _SiswaBerandaTabState extends State<SiswaBerandaTab> {
   bool _isLoading = true;
 
-  // Data default untuk rendering
+  // Student Profile
   String _studentName = 'Siswa';
-  String _studentClassAndSchool = 'SMK';
-  int _attendancePresentCount = 0;
-  String _logbookAccApproved = '0';
-  String _logbookAccTotal = '0';
+  String _studentClassAndMajor = '';
+
+  // Placement Data
+  String _dudiName = '-';
+
+  // Attendance Today
+  bool _hasCheckedIn = false;
+  String? _checkInTime;
+  String _checkInStatus = 'Belum';
+  bool _hasCheckedOut = false;
+  String? _checkOutTime;
+  String _locationCheckOutTime = '16:00';
+
+  // Logbook Today
+  bool _hasFilledLogbookToday = false;
+  String? _todayLogbookTitle;
+
+  // Stats & Progress
+  int _attendancePercentage = 0;
+  int _totalPresentDays = 0;
+  int _totalRecordedDays = 0;
+  int _logbookApprovedCount = 0;
+  int _logbookTotalCount = 0;
+
+  Map<String, dynamic>? _latestJournal;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+  }
+
+  String _formatTodayDateIndonesian() {
+    final now = DateTime.now();
+    const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    final dayName = days[now.weekday - 1];
+    final monthName = months[now.month - 1];
+    return '$dayName, ${now.day} $monthName ${now.year}';
   }
 
   /// Memuat data dari backend 'monitoring-pkl-app'
@@ -53,70 +76,109 @@ class _SiswaBerandaTabState extends State<SiswaBerandaTab> {
     try {
       // 0. Ambil user login tersimpan di SharedPreferences
       final cachedUser = await AuthService.getUser();
-      if (cachedUser != null && cachedUser['name'] != null) {
-        if (mounted) {
-          setState(() {
-            _studentName = cachedUser['name'].toString();
-          });
-        }
-      }
-
-      // ============================================================================
-      // PANGGILAN API BACKEND 1: GET /api/student/profile
-      // ============================================================================
-      final profile = await StudentService.getProfile();
-      if (profile != null && mounted) {
-        final user = profile['user'] as Map<String, dynamic>?;
-        final name = user?['name']?.toString() ?? profile['name']?.toString();
-        final studentClass = profile['class']?.toString() ?? 'XII RPL 1';
-        final schoolOrMajor = profile['school_name']?.toString() ?? profile['major']?.toString() ?? 'SMKN 2 Bandar Lampung';
-
+      if (cachedUser != null && cachedUser['name'] != null && mounted) {
         setState(() {
-          if (name != null && name.isNotEmpty) {
-            _studentName = name;
-          }
-          _studentClassAndSchool = '$studentClass • $schoolOrMajor';
+          _studentName = cachedUser['name'].toString();
         });
       }
 
       // ============================================================================
-      // PANGGILAN API BACKEND 2: GET /api/student/dashboard
+      // PANGGILAN API BACKEND: GET /api/student/dashboard
       // ============================================================================
       final dashboard = await StudentService.getDashboard();
       if (dashboard != null && mounted) {
-        final journalStats = dashboard['journal_stats'] as Map<String, dynamic>?;
-        if (journalStats != null) {
-          final approved = journalStats['approved'] ?? 0;
-          final total = journalStats['total'] ?? 0;
-          setState(() {
-            _logbookAccApproved = approved.toString();
-            _logbookAccTotal = total.toString();
-          });
+        // 1. Info Siswa
+        final studentInfo = dashboard['student'] as Map<String, dynamic>?;
+        if (studentInfo != null) {
+          final sName = studentInfo['name']?.toString() ?? '';
+          if (sName.isNotEmpty) _studentName = sName;
+          final sClass = studentInfo['class']?.toString() ?? '';
+          final sMajor = studentInfo['major']?.toString() ?? '';
+          final sSchool = studentInfo['school_name']?.toString() ?? '';
+          final parts = [sClass, sMajor].where((e) => e.isNotEmpty && e != '-').toList();
+          _studentClassAndMajor = parts.join(' · ');
+          if (sSchool.isNotEmpty && _studentClassAndMajor.isEmpty) {
+            _studentClassAndMajor = sSchool;
+          }
         }
 
-        final attendanceStats = dashboard['attendance_stats'] as Map<String, dynamic>?;
-        if (attendanceStats != null && attendanceStats['present'] != null) {
-          setState(() {
-            _attendancePresentCount = attendanceStats['present'] is int 
-                ? attendanceStats['present'] 
-                : int.tryParse(attendanceStats['present'].toString()) ?? 0;
-          });
+        // 2. Info Penempatan
+        final placementData = dashboard['placement'] as Map<String, dynamic>?;
+        if (placementData != null) {
+          final loc = placementData['location'] as Map<String, dynamic>?;
+          _dudiName = loc?['name']?.toString() ?? '-';
+          if (loc?['check_out_time'] != null) {
+            final cot = loc!['check_out_time'].toString();
+            _locationCheckOutTime = cot.length >= 5 ? cot.substring(0, 5) : cot;
+          }
         }
-      }
 
-      // ============================================================================
-      // PANGGILAN API BACKEND 3: GET /api/student/attendances (Validasi / Fallback)
-      // ============================================================================
-      final attendancesData = await StudentService.getAttendances();
-      if (attendancesData != null && attendancesData['attendances'] != null && mounted) {
-        final list = attendancesData['attendances'] as List<dynamic>;
-        final presentCount = list.where((a) => a['status'] == 'present' || a['status'] == 'late' || a['status'] == 'approved').length;
-        setState(() {
-          _attendancePresentCount = presentCount;
-        });
+        // 3. Presensi Hari Ini
+        final attToday = dashboard['attendance_today'] as Map<String, dynamic>?;
+        if (attToday != null) {
+          final checkInAt = attToday['check_in_at']?.toString();
+          _hasCheckedIn = checkInAt != null && checkInAt.isNotEmpty;
+          if (_hasCheckedIn) {
+            try {
+              final dt = DateTime.parse(checkInAt!).toLocal();
+              _checkInTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} WIB";
+            } catch (_) {
+              _checkInTime = attToday['check_in_time']?.toString() ?? 'Tercatat';
+            }
+          }
+          final st = attToday['status']?.toString();
+          if (st == 'late') {
+            _checkInStatus = 'Terlambat';
+          } else if (_hasCheckedIn) {
+            _checkInStatus = 'Tepat waktu';
+          } else {
+            _checkInStatus = 'Belum';
+          }
+
+          final checkOutAt = attToday['check_out_at']?.toString();
+          _hasCheckedOut = checkOutAt != null && checkOutAt.isNotEmpty;
+          if (_hasCheckedOut) {
+            try {
+              final dt = DateTime.parse(checkOutAt!).toLocal();
+              _checkOutTime = "${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')} WIB";
+            } catch (_) {
+              _checkOutTime = attToday['check_out_time']?.toString() ?? 'Selesai';
+            }
+          }
+        } else {
+          _hasCheckedIn = false;
+          _checkInTime = null;
+          _checkInStatus = 'Belum';
+          _hasCheckedOut = false;
+          _checkOutTime = null;
+        }
+
+        // 4. Logbook Hari Ini
+        final jToday = dashboard['journal_today'] as Map<String, dynamic>?;
+        _hasFilledLogbookToday = jToday != null;
+        if (jToday != null) {
+          _todayLogbookTitle = jToday['activity']?.toString() ?? jToday['description']?.toString();
+        }
+
+        // 5. Statistik Presensi & Logbook
+        final attStats = dashboard['attendance_stats'] as Map<String, dynamic>?;
+        if (attStats != null) {
+          _attendancePercentage = (attStats['percentage'] as num?)?.toInt() ?? 0;
+          _totalPresentDays = (attStats['present'] as num?)?.toInt() ?? 0;
+          _totalRecordedDays = (attStats['total_recorded_days'] as num?)?.toInt() ?? 0;
+        }
+
+        final jStats = dashboard['journal_stats'] as Map<String, dynamic>?;
+        if (jStats != null) {
+          _logbookApprovedCount = (jStats['approved'] as num?)?.toInt() ?? 0;
+          _logbookTotalCount = (jStats['total'] as num?)?.toInt() ?? 0;
+        }
+
+        // 6. Logbook Terbaru
+        _latestJournal = dashboard['latest_journal'] as Map<String, dynamic>?;
       }
     } catch (_) {
-      // Gunakan data fallback jika backend offline
+      // Biarkan data tetap kosong/default jika gagal terhubung
     } finally {
       if (mounted) {
         setState(() {
@@ -153,13 +215,13 @@ class _SiswaBerandaTabState extends State<SiswaBerandaTab> {
                 color: AppColors.primary,
                 child: SingleChildScrollView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // 1. Greeting & Subtitle (Nama & Kelas • Sekolah)
+                      // 1. Greeting (Nama Siswa & Kelas • Jurusan)
                       Text(
-                        'Halo, $_studentName 👋',
+                        'Halo, $_studentName',
                         style: const TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w800,
@@ -167,157 +229,30 @@ class _SiswaBerandaTabState extends State<SiswaBerandaTab> {
                           letterSpacing: -0.4,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      Text(
-                        _studentClassAndSchool,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF64748B),
+                      if (_studentClassAndMajor.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          _studentClassAndMajor,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF64748B),
+                          ),
                         ),
-                      ),
+                      ],
+                      const SizedBox(height: 16),
+
+                      // 2. KARTU "Tugas Hari Ini" (Presensi & Logbook Status + Tombol Aksi Utama)
+                      _buildTugasHariIniCard(),
+                      const SizedBox(height: 16),
+
+                      // 3. BARIS KARTU RINGKASAN: Kehadiran (%) & Logbook ACC (x/y)
+                      _buildSummaryStatsRow(),
                       const SizedBox(height: 20),
 
-                      // 2. Stats Card: Hadir & Logbook ACC (Persis Mockup Figma)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.02),
-                              blurRadius: 10,
-                              offset: const Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          children: [
-                            // Sisi Kiri: Hadir
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'Hadir',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '$_attendancePresentCount Hari',
-                                    style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.w900,
-                                      color: Color(0xFF0F172A),
-                                      letterSpacing: -0.3,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-
-                            // Garis Pemisah Vertikal
-                            Container(
-                              width: 1,
-                              height: 38,
-                              color: const Color(0xFFE2E8F0),
-                            ),
-
-                            // Sisi Kanan: Logbook ACC
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    'Logbook ACC',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  RichText(
-                                    text: TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: _logbookAccApproved,
-                                          style: const TextStyle(
-                                            fontSize: 22,
-                                            fontWeight: FontWeight.w900,
-                                            color: Color(0xFF2563EB),
-                                            letterSpacing: -0.3,
-                                          ),
-                                        ),
-                                        TextSpan(
-                                          text: '/$_logbookAccTotal',
-                                          style: const TextStyle(
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF64748B),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
+                      // 4. STATUS LOGBOOK TERBARU (Catatan Instruktur)
+                      _buildLatestLogbookSection(),
                       const SizedBox(height: 24),
-
-                      // 3. Grid Menu Cepat (3 Kolom Sesuai Mockup)
-                      // Baris 1: Logbook | Izin / Sakit | Presensi
-                      Row(
-                        children: [
-                          _buildMenuCard(
-                            label: 'Logbook',
-                            icon: Icons.fact_check_rounded,
-                            onTap: () => widget.onNavigateTab?.call(2),
-                          ),
-                          const SizedBox(width: 14),
-                          _buildMenuCard(
-                            label: 'Izin / Sakit',
-                            icon: Icons.edit_calendar_outlined,
-                            onTap: () => widget.onNavigateTab?.call(1, 2),
-                          ),
-                          const SizedBox(width: 14),
-                          _buildMenuCard(
-                            label: 'Presensi',
-                            icon: Icons.how_to_reg_rounded,
-                            onTap: () => widget.onNavigateTab?.call(1, 0),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 14),
-
-                      // Baris 2: Projek | Profil | (Kosong agar simetris 3 kolom)
-                      Row(
-                        children: [
-                          _buildMenuCard(
-                            label: 'Projek',
-                            icon: Icons.assignment_outlined,
-                            onTap: () => widget.onNavigateTab?.call(3),
-                          ),
-                          const SizedBox(width: 14),
-                          _buildMenuCard(
-                            label: 'Profil',
-                            icon: Icons.person_outline_rounded,
-                            onTap: () => widget.onNavigateTab?.call(4),
-                          ),
-                          const SizedBox(width: 14),
-                          const Expanded(child: SizedBox()),
-                        ],
-                      ),
-                      const SizedBox(height: 28),
                     ],
                   ),
                 ),
@@ -329,63 +264,620 @@ class _SiswaBerandaTabState extends State<SiswaBerandaTab> {
     );
   }
 
-  /// Komponen Kartu Menu Grid dengan Icon Lingkaran Lembut
-  Widget _buildMenuCard({
-    required String label,
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
-    return Expanded(
-      child: Material(
+  /// ── KARTU TUGAS HARI INI ──
+  Widget _buildTugasHariIniCard() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(18),
-          child: Container(
-            height: 104,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Tugas Hari Ini + Tanggal
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'Tugas Hari Ini',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              Text(
+                _formatTodayDateIndonesian(),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Badge Radius / Lokasi
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFF1F5F9), width: 1.2),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.02),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
-                ),
-              ],
+              color: const Color(0xFFECFDF5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: const Color(0xFFA7F3D0)),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF1F5F9),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Icon(
-                      icon,
-                      color: const Color(0xFF334155),
-                      size: 22,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
+                const Icon(Icons.location_on_rounded, size: 14, color: Color(0xFF059669)),
+                const SizedBox(width: 4),
                 Text(
-                  label,
+                  _dudiName != '-' ? 'Dalam radius lokasi: $_dudiName' : 'Dalam radius lokasi DU/DI',
                   style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF0F172A),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF065F46),
                   ),
-                  textAlign: TextAlign.center,
                 ),
               ],
             ),
           ),
+          const SizedBox(height: 16),
+
+          // 1. Presensi Masuk
+          _buildTaskItem(
+            icon: _hasCheckedIn ? Icons.check_circle_rounded : Icons.schedule_rounded,
+            iconColor: _hasCheckedIn ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+            iconBg: _hasCheckedIn ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
+            title: 'Presensi masuk',
+            subtitle: _hasCheckedIn
+                ? '$_checkInTime · $_checkInStatus'
+                : 'Belum presensi masuk',
+            badgeText: _hasCheckedIn ? 'Selesai' : 'Belum',
+            badgeBg: _hasCheckedIn ? const Color(0xFFD1FAE5) : const Color(0xFFFEE2E2),
+            badgeColor: _hasCheckedIn ? const Color(0xFF065F46) : const Color(0xFF991B1B),
+          ),
+          const Divider(height: 22, color: Color(0xFFF1F5F9)),
+
+          // 2. Logbook Hari Ini
+          _buildTaskItem(
+            icon: _hasFilledLogbookToday ? Icons.menu_book_rounded : Icons.edit_note_rounded,
+            iconColor: _hasFilledLogbookToday ? const Color(0xFF10B981) : const Color(0xFFF59E0B),
+            iconBg: _hasFilledLogbookToday ? const Color(0xFFD1FAE5) : const Color(0xFFFEF3C7),
+            title: 'Logbook hari ini',
+            subtitle: _hasFilledLogbookToday
+                ? (_todayLogbookTitle != null ? 'Sudah diisi: $_todayLogbookTitle' : 'Sudah diisi')
+                : 'Belum diisi',
+            badgeText: _hasFilledLogbookToday ? 'Selesai' : 'Perlu diisi',
+            badgeBg: _hasFilledLogbookToday ? const Color(0xFFD1FAE5) : const Color(0xFFFEF3C7),
+            badgeColor: _hasFilledLogbookToday ? const Color(0xFF065F46) : const Color(0xFF92400E),
+          ),
+          const Divider(height: 22, color: Color(0xFFF1F5F9)),
+
+          // 3. Presensi Pulang
+          _buildTaskItem(
+            icon: _hasCheckedOut ? Icons.check_circle_rounded : Icons.access_time_rounded,
+            iconColor: _hasCheckedOut ? const Color(0xFF10B981) : const Color(0xFF64748B),
+            iconBg: _hasCheckedOut ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
+            title: 'Presensi pulang',
+            subtitle: _hasCheckedOut
+                ? '$_checkOutTime · Selesai'
+                : (_hasCheckedIn ? 'Dibuka pukul $_locationCheckOutTime WIB' : 'Menunggu presensi masuk'),
+            badgeText: _hasCheckedOut ? 'Selesai' : 'Menunggu',
+            badgeBg: _hasCheckedOut ? const Color(0xFFD1FAE5) : const Color(0xFFF1F5F9),
+            badgeColor: _hasCheckedOut ? const Color(0xFF065F46) : const Color(0xFF64748B),
+          ),
+          const SizedBox(height: 18),
+
+          // Tombol Aksi Utama Dinamis
+          _buildMainActionButton(),
+
+          const SizedBox(height: 12),
+          Center(
+            child: InkWell(
+              onTap: () => widget.onNavigateTab?.call(1, 2), // Subtab Izin / Sakit
+              child: RichText(
+                text: const TextSpan(
+                  text: 'Tidak bisa hadir? ',
+                  style: TextStyle(fontSize: 12, color: Color(0xFF64748B)),
+                  children: [
+                    TextSpan(
+                      text: 'Ajukan izin / sakit',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF2563EB),
+                        decoration: TextDecoration.underline,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Komponen Baris Tugas Hari Ini
+  Widget _buildTaskItem({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String title,
+    required String subtitle,
+    required String badgeText,
+    required Color badgeBg,
+    required Color badgeColor,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 38,
+          height: 38,
+          decoration: BoxDecoration(
+            color: iconBg,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, color: iconColor, size: 20),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF0F172A),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF64748B),
+                ),
+              ),
+            ],
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: badgeBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            badgeText,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: badgeColor,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Tombol Aksi Utama Berdasarkan Status Hari Ini
+  Widget _buildMainActionButton() {
+    if (!_hasCheckedIn) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => widget.onNavigateTab?.call(1, 0), // Ke Presensi Masuk
+          icon: const Icon(Icons.how_to_reg_rounded, size: 20),
+          label: const Text('Absen Masuk Sekarang', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2563EB),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            elevation: 0,
+          ),
+        ),
+      );
+    } else if (!_hasFilledLogbookToday) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => widget.onNavigateTab?.call(2), // Ke Logbook
+          icon: const Icon(Icons.edit_note_rounded, size: 20),
+          label: const Text('Isi Logbook Hari Ini', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2563EB),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            elevation: 0,
+          ),
+        ),
+      );
+    } else if (!_hasCheckedOut) {
+      return SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: () => widget.onNavigateTab?.call(1, 1), // Ke Presensi Pulang
+          icon: const Icon(Icons.logout_rounded, size: 20),
+          label: const Text('Presensi Pulang Sekarang', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF2563EB),
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            elevation: 0,
+          ),
+        ),
+      );
+    } else {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFECFDF5),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFFA7F3D0)),
+        ),
+        child: const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle_rounded, color: Color(0xFF059669), size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Semua Tugas Hari Ini Selesai ✓',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF065F46)),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  /// ── BARIS KARTU RINGKASAN: KEHADIRAN & LOGBOOK ACC ──
+  Widget _buildSummaryStatsRow() {
+    return Row(
+      children: [
+        // Kartu Kehadiran
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Kehadiran',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.person_rounded, size: 16, color: Color(0xFF10B981)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$_attendancePercentage%',
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0F172A),
+                    letterSpacing: -0.5,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _totalRecordedDays > 0 ? '$_totalPresentDays dari $_totalRecordedDays hari' : 'Sejak awal PKL',
+                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF10B981)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 14),
+
+        // Kartu Logbook ACC
+        Expanded(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Logbook ACC',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF64748B)),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFEFF6FF),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.assignment_turned_in_rounded, size: 16, color: Color(0xFF2563EB)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                RichText(
+                  text: TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$_logbookApprovedCount',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF0F172A),
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      TextSpan(
+                        text: '/$_logbookTotalCount',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF64748B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Disetujui Instruktur',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF2563EB)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// ── BAGIAN LOGBOOK TERBARU (DENGAN CATATAN DARI INSTRUKTUR) ──
+  Widget _buildLatestLogbookSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Logbook Terbaru',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF0F172A),
+              ),
+            ),
+            TextButton(
+              onPressed: () => widget.onNavigateTab?.call(2), // Ke Tab Logbook
+              style: TextButton.styleFrom(
+                padding: EdgeInsets.zero,
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+              child: const Text(
+                'Lihat Semua',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF2563EB),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+
+        if (_latestJournal == null)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.assignment_outlined, size: 36, color: Color(0xFF94A3B8)),
+                const SizedBox(height: 8),
+                const Text(
+                  'Belum ada logbook yang diisi',
+                  style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: () => widget.onNavigateTab?.call(2),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: const Text('Isi Logbook Sekarang', style: TextStyle(fontSize: 12)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF2563EB),
+                    side: const BorderSide(color: Color(0xFF2563EB)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ],
+            ),
+          )
+        else
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.02),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Tanggal & Status Badge
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      _latestJournal!['formatted_date']?.toString() ??
+                          _latestJournal!['logbook_date']?.toString() ??
+                          '-',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFF64748B)),
+                    ),
+                    _buildStatusBadge(_latestJournal!['status']?.toString() ?? 'submitted'),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Judul Kegiatan
+                Text(
+                  _latestJournal!['activity']?.toString() ?? '-',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF0F172A),
+                    height: 1.3,
+                  ),
+                ),
+                const SizedBox(height: 10),
+
+                // Kotak Catatan Instruktur jika ada
+                if (_latestJournal!['verification_note'] != null &&
+                    _latestJournal!['verification_note'].toString().trim().isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFECFDF5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: const Color(0xFFA7F3D0)),
+                    ),
+                    child: RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'Catatan Instruktur (${_latestJournal!['supervisor_name'] ?? 'Instruktur'}): ',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF065F46),
+                            ),
+                          ),
+                          TextSpan(
+                            text: '"${_latestJournal!['verification_note']}"',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                              color: Color(0xFF065F46),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Badge Status Logbook (Disetujui, Menunggu, Ditolak)
+  Widget _buildStatusBadge(String status) {
+    Color bg;
+    Color textColor;
+    String label;
+
+    switch (status.toLowerCase()) {
+      case 'approved':
+        bg = const Color(0xFFD1FAE5);
+        textColor = const Color(0xFF065F46);
+        label = 'Disetujui';
+        break;
+      case 'rejected':
+        bg = const Color(0xFFFEE2E2);
+        textColor = const Color(0xFF991B1B);
+        label = 'Direvisi';
+        break;
+      case 'draft':
+        bg = const Color(0xFFF1F5F9);
+        textColor = const Color(0xFF64748B);
+        label = 'Draft';
+        break;
+      default:
+        bg = const Color(0xFFFEF3C7);
+        textColor = const Color(0xFF92400E);
+        label = 'Menunggu';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          color: textColor,
         ),
       ),
     );

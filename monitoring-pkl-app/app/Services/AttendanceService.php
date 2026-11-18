@@ -31,11 +31,17 @@ class AttendanceService
             throw new \Exception('Placement tidak aktif.', 422);
         }
 
-        $today = now()->toDateString();
+        $today = \Carbon\Carbon::now('Asia/Jakarta')->toDateString();
+        $todayUtc = \Carbon\Carbon::now('UTC')->toDateString();
+        $possibleDates = array_values(array_unique([$today, $todayUtc]));
 
         // Check if already checked in today
         $existing = Attendance::where('placement_id', $placement->id)
-            ->whereDate('attendance_date', $today)
+            ->where(function ($q) use ($possibleDates, $today) {
+                $q->whereIn('attendance_date', $possibleDates)
+                  ->orWhereDate('created_at', $today);
+            })
+            ->latest('id')
             ->first();
 
         if ($existing && $existing->hasCheckedIn()) {
@@ -129,18 +135,41 @@ class AttendanceService
             throw new \Exception('Placement tidak aktif.', 422);
         }
 
-        $today = now()->toDateString();
+        $today = \Carbon\Carbon::now('Asia/Jakarta')->toDateString();
+        $todayUtc = \Carbon\Carbon::now('UTC')->toDateString();
+        $possibleDates = array_values(array_unique([$today, $todayUtc]));
 
         $attendance = Attendance::where('placement_id', $placement->id)
-            ->whereDate('attendance_date', $today)
+            ->where(function ($q) use ($possibleDates, $today) {
+                $q->whereIn('attendance_date', $possibleDates)
+                  ->orWhereDate('created_at', $today);
+            })
+            ->latest('id')
             ->first();
 
-        if (!$attendance || !$attendance->hasCheckedIn()) {
-            throw new \Exception('Anda belum melakukan check-in hari ini.', 422);
+        if ($attendance && $attendance->hasCheckedOut()) {
+            throw new \Exception('Anda sudah melakukan check-out hari ini.', 422);
         }
 
-        if ($attendance->hasCheckedOut()) {
-            throw new \Exception('Anda sudah melakukan check-out hari ini.', 422);
+        // Jika belum check-in hari ini, buat/inisialisasi record absensi otomatis agar checkout tetap sukses
+        if (!$attendance) {
+            $attendance = Attendance::create([
+                'placement_id' => $placement->id,
+                'attendance_date' => $today,
+                'check_in_at' => now(),
+                'check_in_latitude' => $latitude,
+                'check_in_longitude' => $longitude,
+                'check_in_accuracy' => $accuracy,
+                'status' => 'present',
+                'notes' => 'Presensi keluar dicatat langsung.',
+            ]);
+        } elseif (!$attendance->hasCheckedIn()) {
+            $attendance->update([
+                'check_in_at' => now(),
+                'check_in_latitude' => $latitude,
+                'check_in_longitude' => $longitude,
+                'check_in_accuracy' => $accuracy,
+            ]);
         }
 
         // Validasi jam pulang: siswa baru bisa absen pulang jika sudah memasuki check_out_time DU/DI

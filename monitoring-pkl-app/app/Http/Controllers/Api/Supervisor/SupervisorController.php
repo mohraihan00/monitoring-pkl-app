@@ -31,7 +31,15 @@ class SupervisorController extends Controller
     private function getSupervisorPlacementIds(Request $request): array
     {
         $supervisor = $request->user()->fieldSupervisor;
-        return $supervisor->placements()->pluck('id')->toArray();
+        if (!$supervisor) return [];
+
+        $directPlacementIds = $supervisor->placements()->pluck('id')->toArray();
+        $locationIds = $supervisor->locations()->pluck('locations.id')->toArray();
+        $locationPlacementIds = !empty($locationIds) 
+            ? Placement::whereIn('location_id', $locationIds)->pluck('id')->toArray() 
+            : [];
+
+        return array_values(array_unique(array_merge($directPlacementIds, $locationPlacementIds)));
     }
 
     /**
@@ -334,15 +342,128 @@ class SupervisorController extends Controller
      */
     public function dashboard(Request $request): JsonResponse
     {
+        $supervisor = $request->user()->fieldSupervisor;
         $placementIds = $this->getSupervisorPlacementIds($request);
-        $today = now()->toDateString();
+        $todayWib = \Carbon\Carbon::now('Asia/Jakarta')->toDateString();
+        $todayUtc = \Carbon\Carbon::now('UTC')->toDateString();
+        $possibleDates = array_values(array_unique([$todayWib, $todayUtc]));
+
+        $activePlacements = Placement::with(['student.user', 'assessment', 'location'])
+            ->whereIn('id', $placementIds)
+            ->where('status', 'active')
+            ->get();
+
+        $totalStudents = $activePlacements->count();
+
+        // 1. Presensi Hari Ini per Siswa (Mencakup attendance_date WIB/UTC serta timestamp check_in_at & created_at)
+        $todayAttendances = Attendance::whereIn('placement_id', $placementIds)
+            ->where(function ($q) use ($possibleDates, $todayWib, $todayUtc) {
+                $q->whereIn('attendance_date', $possibleDates)
+                  ->orWhereDate('attendance_date', $todayWib)
+                  ->orWhereDate('attendance_date', $todayUtc)
+                  ->orWhereDate('check_in_at', $todayWib)
+                  ->orWhereDate('check_in_at', $todayUtc)
+                  ->orWhereDate('created_at', $todayWib)
+                  ->orWhereDate('created_at', $todayUtc);
+            })
+            ->latest('id')
+            ->get();
+
+        $studentsAttendance = [];
+        $presentTodayCount = 0;
+        $lateTodayCount = 0;
+
+        foreach ($activePlacements as $p) {
+            $student = $p->student;
+            $att = $todayAttendances->first(fn($a) => (int)$a->placement_id === (int)$p->id);
+            $isPresent = $att && (!empty($att->check_in_at) || in_array($att->status, ['present', 'late', 'approved']));
+            $isLate = $att?->status === 'late';
+            if ($isPresent) {
+                $presentTodayCount++;
+                if ($isLate) $lateTodayCount++;
+            }
+
+            $checkInTimeFormatted = $att?->check_in_at 
+                ? \Carbon\Carbon::parse($att->check_in_at)->timezone('Asia/Jakarta')->format('H:i') . ' WIB' 
+                : null;
+            $checkOutTimeFormatted = $att?->check_out_at 
+                ? \Carbon\Carbon::parse($att->check_out_at)->timezone('Asia/Jakarta')->format('H:i') . ' WIB' 
+                : null;
+
+            $statusLabel = 'Belum Hadir';
+            if ($att) {
+                if ($att->status === 'sick') $statusLabel = 'Sakit';
+                elseif ($att->status === 'permission') $statusLabel = 'Izin';
+                elseif ($att->status === 'absent') $statusLabel = 'Alpa';
+                elseif ($isLate) $statusLabel = 'Hadir (Terlambat)';
+                elseif ($isPresent) $statusLabel = 'Hadir (Tepat Waktu)';
+            }
+
+            $studentsAttendance[] = [
+                'placement_id' => $p->id,
+                'student_id' => $student?->id,
+                'name' => $student?->name ?? $student?->user?->name ?? 'Siswa',
+                'nis' => $student?->nis ?? '-',
+                'class' => $student?->class ?? '-',
+                'is_present' => $isPresent,
+                'status' => $att?->status ?? 'belum_hadir',
+                'status_label' => $statusLabel,
+                'check_in_time' => $checkInTimeFormatted,
+                'check_out_time' => $checkOutTimeFormatted,
+                'is_late' => $isLate,
+            ];
+        }
+
+        // 2. Metrik Kehadiran & Ketepatan Waktu Historis
+        $allAttendances = Attendance::whereIn('placement_id', $placementIds)->get();
+        $totalAttRecords = $allAttendances->count();
+        $totalPresentRecords = $allAttendances->whereIn('status', ['present', 'late', 'approved'])->count();
+        $totalOnTimeRecords = $allAttendances->where('status', 'present')->count();
+        $totalLateRecords = $allAttendances->where('status', 'late')->count();
+
+        $avgAttendanceRate = $totalAttRecords > 0 ? round(($totalPresentRecords / $totalAttRecords) * 100) : 0;
+        $totalCheckIns = $totalOnTimeRecords + $totalLateRecords;
+        $avgOnTimeRate = $totalCheckIns > 0 ? round(($totalOnTimeRecords / $totalCheckIns) * 100) : 100;
+
+        // 3. Ringkasan Penilaian / Nilai PKL
+        $gradedCount = $activePlacements->filter(fn($p) => $p->assessment && $p->assessment->dudi_score !== null)->count();
+        $ungradedCount = max(0, $totalStudents - $gradedCount);
+        $avgDudiScore = $gradedCount > 0 
+            ? round($activePlacements->filter(fn($p) => $p->assessment && $p->assessment->dudi_score !== null)->avg(fn($p) => $p->assessment->dudi_score), 1)
+            : null;
+
+        // 4. Logbook Menunggu Validasi (HANYA status = submitted)
+        $journalsPendingCount = Journal::whereIn('placement_id', $placementIds)
+            ->where('status', 'submitted')
+            ->count();
+
+        $pendingJournals = Journal::with(['placement.student'])
+            ->whereIn('placement_id', $placementIds)
+            ->where('status', 'submitted')
+            ->latest('created_at')
+            ->take(5)
+            ->get();
+
+        // 5. Projek Siswa
+        $projectsCount = ProjectSubmission::whereIn('placement_id', $placementIds)->count();
 
         return $this->success([
-            'total_students' => Placement::whereIn('id', $placementIds)->where('status', 'active')->count(),
-            'attendance_today' => Attendance::whereIn('placement_id', $placementIds)
-                ->where('attendance_date', $today)->count(),
-            'journals_pending' => Journal::whereIn('placement_id', $placementIds)
-                ->where('status', 'submitted')->count(),
+            'total_students' => $totalStudents,
+            'attendance_today' => $presentTodayCount,
+            'attendance_today_count' => $presentTodayCount,
+            'unattended_today_count' => max(0, $totalStudents - $presentTodayCount),
+            'attendance_rate' => $avgAttendanceRate,
+            'on_time_rate' => $avgOnTimeRate,
+            'journals_pending' => $journalsPendingCount,
+            'projects_count' => $projectsCount,
+            'assessment_summary' => [
+                'total_students' => $totalStudents,
+                'graded_count' => $gradedCount,
+                'ungraded_count' => $ungradedCount,
+                'average_score' => $avgDudiScore,
+            ],
+            'students_today' => $studentsAttendance,
+            'pending_journals' => JournalResource::collection($pendingJournals),
         ]);
     }
 
@@ -355,6 +476,7 @@ class SupervisorController extends Controller
 
         $submissions = ProjectSubmission::with(['placement.student.user', 'reviews.reviewer'])
             ->whereIn('placement_id', $placementIds)
+            ->where('status', '!=', 'draft')
             ->latest('updated_at')
             ->get();
 
@@ -376,7 +498,7 @@ class SupervisorController extends Controller
                 'result' => $sub->result,
                 'document_name' => $sub->document_name,
                 'document_size' => $sub->document_size,
-                'document_url' => $sub->document_path ? asset('storage/' . $sub->document_path) : null,
+                'document_url' => $sub->document_name ? url('/api/projects/' . $sub->id . '/document') : ($sub->document_path ? asset('storage/' . $sub->document_path) : null),
                 'status' => $sub->status,
                 'submitted_at' => $sub->submitted_at?->toIso8601String(),
                 'updated_at' => $sub->updated_at?->toIso8601String(),
@@ -427,7 +549,7 @@ class SupervisorController extends Controller
             'result' => $sub->result,
             'document_name' => $sub->document_name,
             'document_size' => $sub->document_size,
-            'document_url' => $sub->document_path ? asset('storage/' . $sub->document_path) : null,
+            'document_url' => $sub->document_name ? url('/api/projects/' . $sub->id . '/document') : ($sub->document_path ? asset('storage/' . $sub->document_path) : null),
             'status' => $sub->status,
             'submitted_at' => $sub->submitted_at?->toIso8601String(),
             'updated_at' => $sub->updated_at?->toIso8601String(),

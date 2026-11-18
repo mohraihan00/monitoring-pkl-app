@@ -1,8 +1,10 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../core/services/student_service.dart';
 import '../../widgets/smart_pkl_header.dart';
+import '../../widgets/status_pill.dart';
 import '../common/pdf_viewer_screen.dart';
 
 /// ==============================================================================
@@ -40,6 +42,7 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
 
   // Lampiran berkas PDF
   String? _selectedFilePath;
+  Uint8List? _selectedFileBytes;
   String? _selectedFileName;
   int _selectedFileSize = 0; // Bytes
 
@@ -82,13 +85,9 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
         setState(() {
           _projects = loadedProjects;
         });
-      } else if (mounted) {
-        setState(() {
-          _projects = [];
-        });
       }
     } catch (_) {
-      // Backend error
+      // Backend error / timeout
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -137,6 +136,7 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf'],
+        withData: true,
       );
 
       if (result != null && result.files.isNotEmpty) {
@@ -155,8 +155,11 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
           return;
         }
 
+        final bytes = file.bytes;
+
         setState(() {
           _selectedFilePath = kIsWeb ? null : file.path;
+          _selectedFileBytes = bytes;
           _selectedFileName = file.name;
           _selectedFileSize = fileSize;
         });
@@ -216,49 +219,74 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
         plan: plan,
         result: result,
         filePath: _selectedFilePath,
+        fileBytes: _selectedFileBytes,
         documentName: _selectedFileName,
         documentSize: _selectedFileSize,
         submitImmediately: true,
       );
 
       if (mounted) {
-        setState(() {
-          _isCreating = false;
-          _editingProjectId = null;
-          _namaDescController.clear();
-          _planningController.clear();
-          _pelaksanaanController.clear();
-          _selectedFilePath = null;
-          _selectedFileName = null;
-        });
+        if (response['success'] == true) {
+          final returnedData = response['data'];
+          setState(() {
+            _isCreating = false;
+            _editingProjectId = null;
+            _namaDescController.clear();
+            _planningController.clear();
+            _pelaksanaanController.clear();
+            _selectedFilePath = null;
+            _selectedFileBytes = null;
+            _selectedFileName = null;
+            _selectedFileSize = 0;
 
-        await _loadProjectsData();
+            if (returnedData is Map) {
+              final projMap = Map<String, dynamic>.from(returnedData);
+              final pId = projMap['id'];
+              final idx = _projects.indexWhere((p) => p['id'] == pId);
+              if (idx >= 0) {
+                _projects[idx] = projMap;
+              } else {
+                _projects.insert(0, projMap);
+              }
+            }
+          });
 
-        if (!mounted) return;
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 28),
-                SizedBox(width: 10),
-                Text('Projek Terkirim!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+          await _loadProjectsData();
+
+          if (!mounted) return;
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle_rounded, color: Color(0xFF16A34A), size: 28),
+                  SizedBox(width: 10),
+                  Text('Projek Terkirim!', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 18)),
+                ],
+              ),
+              content: Text(
+                response['message']?.toString() ??
+                    'Projek dan berkas PDF berhasil diajukan dan sedang menunggu catatan dari Pembimbing DU/DI!',
+                style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2563EB))),
+                ),
               ],
             ),
-            content: Text(
-              response['message']?.toString() ??
-                  'Projek dan berkas PDF berhasil diajukan dan sedang menunggu verifikasi serta catatan dari Pembimbing DU/DI!',
-              style: const TextStyle(fontSize: 13, color: Color(0xFF475569), height: 1.4),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message']?.toString() ?? 'Gagal mengajukan projek.'),
+              backgroundColor: const Color(0xFFDC2626),
+              behavior: SnackBarBehavior.floating,
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('OK', style: TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF2563EB))),
-              ),
-            ],
-          ),
-        );
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -444,31 +472,21 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
     final reviews = proj['reviews'] as List<dynamic>? ?? [];
 
     // Konfigurasi Status Badge
-    Color badgeColor;
-    Color badgeBg;
-    IconData badgeIcon;
-    String badgeLabel;
+    final String badgeLabel;
+    final PillStyle badgeStyle;
 
     if (status == 'approved') {
-      badgeColor = const Color(0xFF16A34A);
-      badgeBg = const Color(0xFFDCFCE7);
-      badgeIcon = Icons.check_circle_rounded;
       badgeLabel = 'Disetujui';
+      badgeStyle = PillStyle.success;
     } else if (status == 'revision') {
-      badgeColor = const Color(0xFFDC2626);
-      badgeBg = const Color(0xFFFEE2E2);
-      badgeIcon = Icons.warning_amber_rounded;
-      badgeLabel = 'Perlu Revisi';
+      badgeLabel = 'Direvisi';
+      badgeStyle = PillStyle.error;
     } else if (status == 'pending' || status == 'submitted') {
-      badgeColor = const Color(0xFF2563EB);
-      badgeBg = const Color(0xFFEFF6FF);
-      badgeIcon = Icons.hourglass_top_rounded;
-      badgeLabel = 'Menunggu Verifikasi';
+      badgeLabel = 'Menunggu';
+      badgeStyle = PillStyle.warning;
     } else {
-      badgeColor = const Color(0xFF64748B);
-      badgeBg = const Color(0xFFF1F5F9);
-      badgeIcon = Icons.edit_note_rounded;
-      badgeLabel = 'Draf Projek';
+      badgeLabel = 'Draf';
+      badgeStyle = PillStyle.neutral;
     }
 
     return Container(
@@ -506,28 +524,9 @@ class _SiswaProjekTabState extends State<SiswaProjekTab> {
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: badgeBg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: badgeColor.withValues(alpha: 0.3)),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(badgeIcon, size: 13, color: badgeColor),
-                    const SizedBox(width: 4),
-                    Text(
-                      badgeLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: badgeColor,
-                      ),
-                    ),
-                  ],
-                ),
+              StatusPill(
+                text: badgeLabel,
+                style: badgeStyle,
               ),
             ],
           ),

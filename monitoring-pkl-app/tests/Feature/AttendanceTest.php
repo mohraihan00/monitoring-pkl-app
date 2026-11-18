@@ -144,6 +144,20 @@ class AttendanceTest extends TestCase
     {
         [$token] = $this->setupStudent();
 
+        // Sebelum jam pulang (10:00 WIB) check-out wajib ditolak
+        $this->travelTo(\Carbon\Carbon::now('Asia/Jakarta')->setTime(10, 0));
+        $earlyResponse = $this->withToken($token)->postJson('/api/student/attendances/check-out', [
+            'latitude' => -6.208763,
+            'longitude' => 106.845599,
+            'accuracy' => 10,
+            'photo' => UploadedFile::fake()->image('checkout.jpg'),
+        ]);
+        $earlyResponse->assertStatus(422)
+            ->assertJson(['success' => false]);
+        $this->assertStringContainsString('Belum waktunya absen pulang', $earlyResponse->json('message'));
+
+        // Memasuki jam pulang (>=16:00 WIB) tanpa check-in sebelumnya, backend menginisialisasi absensi otomatis
+        $this->travelTo(\Carbon\Carbon::now('Asia/Jakarta')->setTime(16, 30));
         $response = $this->withToken($token)->postJson('/api/student/attendances/check-out', [
             'latitude' => -6.208763,
             'longitude' => 106.845599,
@@ -151,13 +165,15 @@ class AttendanceTest extends TestCase
             'photo' => UploadedFile::fake()->image('checkout.jpg'),
         ]);
 
-        $response->assertJson(['success' => false]);
-        $this->assertStringContainsString('belum melakukan check-in', $response->json('message'));
+        $response->assertStatus(200)
+            ->assertJson(['success' => true])
+            ->assertJsonPath('data.check_out_at', fn($v) => !is_null($v));
     }
 
     public function test_student_cannot_check_out_twice(): void
     {
         [$token, $placement] = $this->setupStudent();
+        $this->travelTo(\Carbon\Carbon::now('Asia/Jakarta')->setTime(16, 30));
 
         // Create attendance with both check-in and check-out already done
         Attendance::create([

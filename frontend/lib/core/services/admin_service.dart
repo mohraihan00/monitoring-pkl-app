@@ -979,7 +979,8 @@ class AdminService {
   /// Body: student_id, location_id, period_id, teacher_id, field_supervisor_id, start_date, end_date, status
   /// ============================================================================
   static Future<Map<String, dynamic>> createPlacement({
-    required int studentId,
+    int? studentId,
+    List<int>? studentIds,
     required int locationId,
     required int periodId,
     required int teacherId,
@@ -992,7 +993,8 @@ class AdminService {
       final url = Uri.parse('${AuthService.baseUrl}/admin/placements');
       final headers = await _getHeaders();
       final body = <String, dynamic>{
-        'student_id': studentId,
+        if (studentIds != null && studentIds.isNotEmpty) 'student_ids': studentIds,
+        if (studentId != null) 'student_id': studentId,
         'location_id': locationId,
         'period_id': periodId,
         'teacher_id': teacherId,
@@ -1008,7 +1010,7 @@ class AdminService {
         url,
         headers: headers,
         body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 6));
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -1065,7 +1067,7 @@ class AdminService {
   /// API Backend: 4.8 Master Data Penempatan Siswa
   /// Endpoint: DELETE /api/admin/placements/{id}
   /// Controller: App\Http\Controllers\Api\Admin\PlacementController@destroy
-  /// Deskripsi: Menonaktifkan penempatan dengan status = 'inactive'
+  /// Deskripsi: Menghapus data penempatan siswa
   /// ============================================================================
   static Future<Map<String, dynamic>> deletePlacement(int id) async {
     try {
@@ -1075,9 +1077,9 @@ class AdminService {
 
       final data = jsonDecode(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300) {
-        return {'success': true, 'message': data['message'] ?? 'Penempatan berhasil dinonaktifkan.'};
+        return {'success': true, 'message': data['message'] ?? 'Data penempatan berhasil dihapus.'};
       }
-      return {'success': false, 'message': _extractErrorMessage(data, 'Gagal menonaktifkan penempatan.')};
+      return {'success': false, 'message': _extractErrorMessage(data, 'Gagal menghapus penempatan.')};
     } catch (e) {
       return {'success': false, 'message': 'Gagal terhubung ke server ($e).'};
     }
